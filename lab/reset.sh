@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Back to a clean baseline: recreate the lab GitOps repo, re-apply workloads, clear kubepilot plans.
 set -euo pipefail
+export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
 LAB_REPO=${LAB_REPO:-$HOME/kubepilot-lab-gitops}
 STATE=${KUBEPILOT_STATE_DIR:-$HOME/.local/state/kubepilot}
 kubectl delete -k "$LAB_REPO" --ignore-not-found --wait=true || true

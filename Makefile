@@ -1,6 +1,8 @@
 SHELL := /bin/bash
 DEMO_ENV := KUBEPILOT_SOURCE=fixture KUBEPILOT_FIXTURE_DIR=examples/demo-cluster KUBEPILOT_ALLOWLIST=examples/allowlist.yaml
 SCRATCH ?= .demo
+# k3s's bundled kubectl otherwise falls back to the root-only /etc/rancher/k3s/k3s.yaml
+export KUBECONFIG ?= $(HOME)/.kube/config
 
 .PHONY: install test lint typecheck check demo demo-repo serve-demo serve ingest image \
 	lab-k3s lab-kind lab-down lab-ingest lab-verify lab-break lab-attack lab-fix lab-approve lab-reset lab-mcp lab-capture

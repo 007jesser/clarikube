@@ -3,6 +3,7 @@
 # merges the kubepilot branch into main in the lab GitOps repo and applies it.
 #   ./lab/apply-fix.sh kubepilot/checkout-<planid>
 set -euo pipefail
+export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
 BRANCH=${1:?usage: apply-fix.sh <kubepilot branch>   (see: git -C ~/kubepilot-lab-gitops branch)}
 LAB_REPO=${LAB_REPO:-$HOME/kubepilot-lab-gitops}
 git -C "$LAB_REPO" log --oneline -1 "$BRANCH"

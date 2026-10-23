@@ -5,6 +5,7 @@
 #   LOW_MEM=1    tighter resources for 4 GB machines
 #   FALCO_DRIVER modern_ebpf (default) | kmod | ebpf
 set -euo pipefail
+export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
 : "${INGEST_URL:?set INGEST_URL, e.g. http://<host-ip>:2801/falco}"
 LAB_REPO=${LAB_REPO:-$HOME/kubepilot-lab-gitops}
 STATE=${KUBEPILOT_STATE_DIR:-$HOME/.local/state/kubepilot}
