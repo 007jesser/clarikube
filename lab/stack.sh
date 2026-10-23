@@ -35,7 +35,12 @@ fi
 helm upgrade --install falco falcosecurity/falco -n falco --create-namespace "${FALCO_ARGS[@]}"
 
 say "Trivy Operator"
-TRIVY_ARGS=(--set trivy.ignoreUnfixed=false)
+# Built-in Trivy server: the vulnerability DB is downloaded once instead of by every scan job
+# (parallel per-job downloads exceed the default 5m job timeout on home connections).
+TRIVY_ARGS=(--set trivy.ignoreUnfixed=false
+            --set operator.builtInTrivyServer=true
+            --set operator.scanJobTimeout=15m
+            --set operator.scanJobsConcurrentLimit=3)
 if [[ "${LOW_MEM:-0}" == 1 ]]; then
   TRIVY_ARGS+=(--set operator.scanJobsConcurrentLimit=1)
 fi
