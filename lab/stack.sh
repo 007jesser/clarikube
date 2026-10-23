@@ -26,7 +26,7 @@ FALCO_ARGS=(
   --set tty=true
   --set falcosidekick.enabled=true
   --set falcosidekick.config.webhook.address="$INGEST_URL"
-  --set-string falcosidekick.config.webhook.customheaders="Authorization:Bearer $TOKEN"
+  --set-string falcosidekick.config.webhook.customHeaders="Authorization:Bearer $TOKEN"
 )
 if [[ "${LOW_MEM:-0}" == 1 ]]; then
   FALCO_ARGS+=(--set resources.requests.memory=256Mi --set resources.limits.memory=512Mi

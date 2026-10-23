@@ -30,7 +30,7 @@ have not yet been checked against a live cluster in this repo's CI.
 - Falco JSON: `time`, `rule`, `priority`, `output`, `output_fields`, `tags`.
 - Kubernetes fields used: `k8s.ns.name`, `k8s.pod.name`, `container.name`,
   `container.image.repository`, `container.image.tag`.
-- Falcosidekick webhook output posts one event per request; `webhook.customheaders` sets the
+- Falcosidekick webhook output posts one event per request; `webhook.customHeaders` sets the
   `Authorization` header (format `Key:Value`, comma-separated).
 - Default rule priorities: "Terminal shell in container" = Notice, "Read sensitive file untrusted" =
   Warning, "Drop and execute new binary in container" = Critical (rule sets change between releases).

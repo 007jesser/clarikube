@@ -91,7 +91,7 @@ def make_ingest_app(store: AlertStore, token: str | None = None) -> Any:
     """Starlette app exposing ``POST /falco`` for Falcosidekick's webhook output.
 
     If ``token`` is set, requests must carry ``Authorization: Bearer <token>``
-    (configure via Falcosidekick ``webhook.customheaders``).
+    (configure via Falcosidekick ``webhook.customHeaders``).
     """
     import hmac
 
