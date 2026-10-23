@@ -33,6 +33,9 @@ sudo cp /etc/rancher/k3s/k3s.yaml "$HOME/.kube/config"
 sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
 chmod 600 "$HOME/.kube/config"
 export KUBECONFIG="$HOME/.kube/config"
+# k3s's bundled kubectl defaults to the root-only /etc/rancher/k3s/k3s.yaml; persist KUBECONFIG for new shells.
+grep -q 'KUBECONFIG=$HOME/.kube/config' "$HOME/.bashrc" 2>/dev/null \
+  || echo 'export KUBECONFIG=$HOME/.kube/config' >> "$HOME/.bashrc"
 command -v kubectl >/dev/null || sudo ln -sf "$(command -v k3s)" /usr/local/bin/kubectl
 
 say "Waiting for the node to be Ready"
