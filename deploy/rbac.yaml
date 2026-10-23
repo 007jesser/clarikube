@@ -1,0 +1,56 @@
+# Minimal READ-ONLY access for kubepilot.
+# - no Secrets, no pods/exec, no pods/log, no write verbs anywhere
+# - RBAC objects are listed only to compute ServiceAccount exposure
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubepilot
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubepilot
+  namespace: kubepilot
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubepilot-readonly
+rules:
+  - apiGroups: [""]
+    resources: [pods, events, nodes, namespaces, services, serviceaccounts]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [aquasecurity.github.io]
+    resources: [vulnerabilityreports, configauditreports]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubepilot-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubepilot-readonly
+subjects:
+  - kind: ServiceAccount
+    name: kubepilot
+    namespace: kubepilot

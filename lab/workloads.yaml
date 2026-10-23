@@ -1,0 +1,84 @@
+# Deliberately broken / risky workloads to exercise every kubepilot rule on a real cluster.
+apiVersion: v1
+kind: Namespace
+metadata: {name: shop}
+---
+# OOMKilled: allocates more memory than its limit
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: checkout, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      containers:
+        - name: checkout
+          image: polinux/stress:1.0.4
+          command: ["stress", "--vm", "1", "--vm-bytes", "200M", "--vm-hang", "1"]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 128Mi}
+---
+# Image pull failure
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: frontend}}
+  template:
+    metadata: {labels: {app: frontend}}
+    spec:
+      containers:
+        - name: frontend
+          image: nginx:1.999-does-not-exist
+---
+# Missing secret
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: api}}
+  template:
+    metadata: {labels: {app: api}}
+    spec:
+      containers:
+        - name: api
+          image: nginx:1.27
+          envFrom: [{secretRef: {name: api-db-credentials}}]
+---
+# Over-privileged, old image with known CVEs, no NetworkPolicy, SA can read secrets -> attack target
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: payment-api, namespace: shop}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: payment-api, namespace: shop}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: payment-api, namespace: shop}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: payment-api}
+subjects: [{kind: ServiceAccount, name: payment-api, namespace: shop}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: payment-api, namespace: shop}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: payment-api}}
+  template:
+    metadata: {labels: {app: payment-api}}
+    spec:
+      serviceAccountName: payment-api
+      containers:
+        - name: payment-api
+          image: nginx:1.19.0   # old on purpose: Trivy will report critical CVEs

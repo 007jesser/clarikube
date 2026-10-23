@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Node
+    metadata: {name: kind-control-plane}
+    spec:
+      taints:
+        - {key: node-role.kubernetes.io/control-plane, effect: NoSchedule}
+    status:
+      allocatable: {cpu: "4", memory: 4026500Ki}
+      conditions:
+        - {type: Ready, status: "True"}
+        - {type: MemoryPressure, status: "False"}
+        - {type: DiskPressure, status: "False"}
+  - apiVersion: v1
+    kind: Node
+    metadata: {name: kind-worker}
+    status:
+      allocatable: {cpu: "4", memory: 4026500Ki}
+      conditions:
+        - {type: Ready, status: "True"}
+        - {type: MemoryPressure, status: "False"}
+  - apiVersion: v1
+    kind: Node
+    metadata: {name: kind-worker2}
+    status:
+      allocatable: {cpu: "4", memory: 4026500Ki}
+      conditions:
+        - {type: Ready, status: "True"}
+        - {type: MemoryPressure, status: "False"}

@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Event
+    metadata: {name: checkout-rollout.1, namespace: shop}
+    involvedObject: {kind: Deployment, name: checkout, namespace: shop}
+    type: Normal
+    reason: ScalingReplicaSet
+    message: Scaled up replica set checkout-7c9d4f8b6 to 2
+    count: 1
+    firstTimestamp: "2026-10-23T09:10:00Z"
+    lastTimestamp: "2026-10-23T09:10:00Z"
+  - apiVersion: v1
+    kind: Event
+    metadata: {name: checkout-abcde.backoff, namespace: shop}
+    involvedObject: {kind: Pod, name: checkout-7c9d4f8b6-abcde, namespace: shop}
+    type: Warning
+    reason: BackOff
+    message: Back-off restarting failed container checkout in pod checkout-7c9d4f8b6-abcde_shop
+    count: 14
+    firstTimestamp: "2026-10-23T09:18:00Z"
+    lastTimestamp: "2026-10-23T09:58:00Z"
+  - apiVersion: v1
+    kind: Event
+    metadata: {name: frontend-m4n5p.failed, namespace: shop}
+    involvedObject: {kind: Pod, name: frontend-9b5d8c7f6-m4n5p, namespace: shop}
+    type: Warning
+    reason: Failed
+    message: 'Failed to pull image "registry.example.com/shop/frontend:1.9.0-rc": rpc error: code = NotFound desc = failed to pull and unpack image: registry.example.com/shop/frontend:1.9.0-rc: not found'
+    count: 6
+    firstTimestamp: "2026-10-23T09:40:10Z"
+    lastTimestamp: "2026-10-23T09:55:00Z"
+  - apiVersion: v1
+    kind: Event
+    metadata: {name: worker-q1w2e.sched, namespace: shop}
+    involvedObject: {kind: Pod, name: worker-6b7c8d9e1-q1w2e, namespace: shop}
+    type: Warning
+    reason: FailedScheduling
+    message: "0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 Insufficient memory."
+    count: 9
+    firstTimestamp: "2026-10-23T09:30:05Z"
+    lastTimestamp: "2026-10-23T09:59:00Z"
+  - apiVersion: v1
+    kind: Event
+    metadata: {name: api-z9x8c.failed, namespace: shop}
+    involvedObject: {kind: Pod, name: api-7d8e9f0a1-z9x8c, namespace: shop}
+    type: Warning
+    reason: Failed
+    message: 'Error: secret "api-db-credentials" not found'
+    count: 11
+    firstTimestamp: "2026-10-23T09:45:10Z"
+    lastTimestamp: "2026-10-23T09:59:30Z"

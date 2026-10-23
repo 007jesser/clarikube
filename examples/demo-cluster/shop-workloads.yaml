@@ -1,0 +1,324 @@
+# ---------------------------------------------------------------- checkout: OOM after rollout rev 2
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: checkout-6d8f9c7b5
+  namespace: shop
+  creationTimestamp: "2026-10-20T14:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: checkout, controller: true}]
+spec:
+  replicas: 0
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: checkout
+          image: registry.example.com/shop/checkout:2.7.4
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          readinessProbe: {httpGet: {path: /ready, port: 8080}}
+          livenessProbe: {httpGet: {path: /live, port: 8080}}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: checkout-7c9d4f8b6
+  namespace: shop
+  creationTimestamp: "2026-10-23T09:10:00Z"
+  annotations: {deployment.kubernetes.io/revision: "2"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: checkout, controller: true}]
+spec:
+  replicas: 2
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: checkout
+          image: registry.example.com/shop/checkout:2.8.0
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          readinessProbe: {httpGet: {path: /ready, port: 8080}}
+          livenessProbe: {httpGet: {path: /live, port: 8080}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-7c9d4f8b6-abcde
+  namespace: shop
+  uid: 0a1b2c3d-0001
+  labels: {app: checkout, pod-template-hash: 7c9d4f8b6}
+  creationTimestamp: "2026-10-23T09:10:05Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: checkout-7c9d4f8b6, controller: true}]
+spec:
+  nodeName: kind-worker
+  serviceAccountName: checkout
+  securityContext: {runAsNonRoot: true, runAsUser: 10001}
+  containers:
+    - name: checkout
+      image: registry.example.com/shop/checkout:2.8.0
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {memory: 256Mi}
+      readinessProbe: {httpGet: {path: /ready, port: 8080}}
+      livenessProbe: {httpGet: {path: /live, port: 8080}}
+status:
+  phase: Running
+  conditions:
+    - {type: Ready, status: "False"}
+    - {type: PodScheduled, status: "True"}
+  containerStatuses:
+    - name: checkout
+      image: registry.example.com/shop/checkout:2.8.0
+      ready: false
+      restartCount: 7
+      state:
+        waiting: {reason: CrashLoopBackOff, message: "back-off 5m0s restarting failed container=checkout"}
+      lastState:
+        terminated: {reason: OOMKilled, exitCode: 137, startedAt: "2026-10-23T09:51:10Z", finishedAt: "2026-10-23T09:54:40Z"}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-7c9d4f8b6-fghij
+  namespace: shop
+  uid: 0a1b2c3d-0002
+  labels: {app: checkout, pod-template-hash: 7c9d4f8b6}
+  creationTimestamp: "2026-10-23T09:10:06Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: checkout-7c9d4f8b6, controller: true}]
+spec:
+  nodeName: kind-worker2
+  serviceAccountName: checkout
+  securityContext: {runAsNonRoot: true, runAsUser: 10001}
+  containers:
+    - name: checkout
+      image: registry.example.com/shop/checkout:2.8.0
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {memory: 256Mi}
+      readinessProbe: {httpGet: {path: /ready, port: 8080}}
+      livenessProbe: {httpGet: {path: /live, port: 8080}}
+status:
+  phase: Running
+  conditions:
+    - {type: Ready, status: "True"}
+  containerStatuses:
+    - name: checkout
+      image: registry.example.com/shop/checkout:2.8.0
+      ready: true
+      restartCount: 5
+      state:
+        running: {startedAt: "2026-10-23T09:57:02Z"}
+      lastState:
+        terminated: {reason: OOMKilled, exitCode: 137, startedAt: "2026-10-23T09:49:00Z", finishedAt: "2026-10-23T09:56:30Z"}
+---
+# ---------------------------------------------------------------- payment-api: runtime attack + CVEs + exposure
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: payment-api-5f7b8c9d4
+  namespace: shop
+  creationTimestamp: "2026-10-15T08:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "3"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: payment-api, controller: true}]
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: payment-api
+          image: registry.example.com/shop/payment-api:2.3.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: payment-api-5f7b8c9d4-x2k9p
+  namespace: shop
+  uid: 0a1b2c3d-0003
+  labels: {app: payment-api, pod-template-hash: 5f7b8c9d4}
+  creationTimestamp: "2026-10-15T08:00:10Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: payment-api-5f7b8c9d4, controller: true}]
+spec:
+  nodeName: kind-worker
+  serviceAccountName: payment-api
+  containers:
+    - name: payment-api
+      image: registry.example.com/shop/payment-api:2.3.0
+      resources:
+        requests: {cpu: 200m, memory: 256Mi}
+        limits: {cpu: "1", memory: 512Mi}
+status:
+  phase: Running
+  conditions:
+    - {type: Ready, status: "True"}
+  containerStatuses:
+    - name: payment-api
+      image: registry.example.com/shop/payment-api:2.3.0
+      ready: true
+      restartCount: 0
+      state:
+        running: {startedAt: "2026-10-15T08:00:20Z"}
+---
+# ---------------------------------------------------------------- frontend: bad image tag
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: frontend-84c6b7d9f
+  namespace: shop
+  creationTimestamp: "2026-10-18T10:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "4"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: frontend, controller: true}]
+spec:
+  replicas: 2
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true}
+      containers:
+        - name: frontend
+          image: registry.example.com/shop/frontend:1.8.2
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: frontend-9b5d8c7f6
+  namespace: shop
+  creationTimestamp: "2026-10-23T09:40:00Z"
+  annotations: {deployment.kubernetes.io/revision: "5"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: frontend, controller: true}]
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true}
+      containers:
+        - name: frontend
+          image: registry.example.com/shop/frontend:1.9.0-rc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-9b5d8c7f6-m4n5p
+  namespace: shop
+  uid: 0a1b2c3d-0004
+  labels: {app: frontend, pod-template-hash: 9b5d8c7f6}
+  creationTimestamp: "2026-10-23T09:40:02Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: frontend-9b5d8c7f6, controller: true}]
+spec:
+  nodeName: kind-worker2
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: frontend
+      image: registry.example.com/shop/frontend:1.9.0-rc
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {memory: 128Mi}
+status:
+  phase: Pending
+  conditions:
+    - {type: Ready, status: "False"}
+    - {type: PodScheduled, status: "True"}
+  containerStatuses:
+    - name: frontend
+      image: registry.example.com/shop/frontend:1.9.0-rc
+      ready: false
+      restartCount: 0
+      state:
+        waiting:
+          reason: ImagePullBackOff
+          message: 'Back-off pulling image "registry.example.com/shop/frontend:1.9.0-rc"'
+---
+# ---------------------------------------------------------------- worker: unschedulable
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: worker-6b7c8d9e1
+  namespace: shop
+  creationTimestamp: "2026-10-23T09:30:00Z"
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: worker, controller: true}]
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true}
+      containers:
+        - name: worker
+          image: registry.example.com/shop/worker:1.0.3
+          resources:
+            requests: {cpu: 500m, memory: 8Gi}
+            limits: {memory: 8Gi}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: worker-6b7c8d9e1-q1w2e
+  namespace: shop
+  uid: 0a1b2c3d-0005
+  labels: {app: worker, pod-template-hash: 6b7c8d9e1}
+  creationTimestamp: "2026-10-23T09:30:02Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: worker-6b7c8d9e1, controller: true}]
+spec:
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: worker
+      image: registry.example.com/shop/worker:1.0.3
+      resources:
+        requests: {cpu: 500m, memory: 8Gi}
+        limits: {memory: 8Gi}
+status:
+  phase: Pending
+  conditions:
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      message: "0/3 nodes are available: 1 node(s) had untolerated taint {node-role.kubernetes.io/control-plane: }, 2 Insufficient memory. preemption: 0/3 nodes are available: 1 Preemption is not helpful for scheduling, 2 No preemption victims found for incoming pod."
+---
+# ---------------------------------------------------------------- api: missing secret
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: api-7d8e9f0a1
+  namespace: shop
+  creationTimestamp: "2026-10-23T09:45:00Z"
+  annotations: {deployment.kubernetes.io/revision: "2"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: api, controller: true}]
+spec:
+  replicas: 1
+  template:
+    spec:
+      securityContext: {runAsNonRoot: true}
+      containers:
+        - name: api
+          image: registry.example.com/shop/api:3.1.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-7d8e9f0a1-z9x8c
+  namespace: shop
+  uid: 0a1b2c3d-0006
+  labels: {app: api, pod-template-hash: 7d8e9f0a1}
+  creationTimestamp: "2026-10-23T09:45:03Z"
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: api-7d8e9f0a1, controller: true}]
+spec:
+  nodeName: kind-worker
+  securityContext: {runAsNonRoot: true}
+  containers:
+    - name: api
+      image: registry.example.com/shop/api:3.1.0
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {memory: 256Mi}
+status:
+  phase: Pending
+  conditions:
+    - {type: Ready, status: "False"}
+  containerStatuses:
+    - name: api
+      image: registry.example.com/shop/api:3.1.0
+      ready: false
+      restartCount: 0
+      state:
+        waiting: {reason: CreateContainerConfigError, message: 'secret "api-db-credentials" not found'}

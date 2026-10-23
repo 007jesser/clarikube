@@ -1,0 +1,115 @@
+# ---------------------------------------------------------------- RBAC
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: payment-api, namespace: shop}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: payment-api, namespace: shop}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: payment-api}
+subjects:
+  - {kind: ServiceAccount, name: payment-api, namespace: shop}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: cluster-admin}
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: cluster-admin}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects:
+  - {kind: Group, name: "system:masters"}
+---
+# ---------------------------------------------------------------- NetworkPolicies (payment-api is NOT covered)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: frontend-allow, namespace: shop}
+spec:
+  podSelector: {matchLabels: {app: frontend}}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: backend-allow, namespace: shop}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app, operator: In, values: [checkout, api, worker]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: frontend}}}]
+  egress:
+    - {}
+---
+# ---------------------------------------------------------------- Trivy Operator reports
+apiVersion: aquasecurity.github.io/v1alpha1
+kind: VulnerabilityReport
+metadata:
+  name: replicaset-payment-api-5f7b8c9d4-payment-api
+  namespace: shop
+  labels:
+    trivy-operator.resource.kind: ReplicaSet
+    trivy-operator.resource.name: payment-api-5f7b8c9d4
+    trivy-operator.resource.namespace: shop
+    trivy-operator.container.name: payment-api
+report:
+  registry: {server: registry.example.com}
+  artifact: {repository: shop/payment-api, tag: 2.3.0}
+  summary: {criticalCount: 1, highCount: 1, mediumCount: 1, lowCount: 0}
+  vulnerabilities:
+    - vulnerabilityID: CVE-2024-45337
+      resource: golang.org/x/crypto
+      installedVersion: v0.28.0
+      fixedVersion: 0.31.0
+      severity: CRITICAL
+      score: 9.1
+      title: "golang.org/x/crypto/ssh: misuse of ServerConfig.PublicKeyCallback may cause authorization bypass"
+    - vulnerabilityID: CVE-2023-44487
+      resource: golang.org/x/net
+      installedVersion: v0.15.0
+      fixedVersion: 0.17.0
+      severity: HIGH
+      score: 7.5
+      title: "HTTP/2 rapid reset can cause excessive work"
+    - vulnerabilityID: CVE-2024-24790
+      resource: stdlib
+      installedVersion: v1.21.5
+      fixedVersion: 1.21.11
+      severity: MEDIUM
+      title: "net/netip: unexpected behavior from Is methods for IPv4-mapped IPv6 addresses"
+---
+apiVersion: aquasecurity.github.io/v1alpha1
+kind: VulnerabilityReport
+metadata:
+  name: replicaset-checkout-7c9d4f8b6-checkout
+  namespace: shop
+  labels:
+    trivy-operator.resource.kind: ReplicaSet
+    trivy-operator.resource.name: checkout-7c9d4f8b6
+    trivy-operator.resource.namespace: shop
+    trivy-operator.container.name: checkout
+report:
+  registry: {server: registry.example.com}
+  artifact: {repository: shop/checkout, tag: 2.8.0}
+  summary: {criticalCount: 0, highCount: 0, mediumCount: 1, lowCount: 2}
+  vulnerabilities:
+    - vulnerabilityID: CVE-2024-24790
+      resource: stdlib
+      installedVersion: v1.22.1
+      fixedVersion: 1.22.4
+      severity: MEDIUM
+      title: "net/netip: unexpected behavior from Is methods for IPv4-mapped IPv6 addresses"

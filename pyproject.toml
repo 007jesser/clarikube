@@ -1,0 +1,63 @@
+[project]
+name = "kubepilot"
+version = "0.1.0"
+description = "Model-agnostic MCP server for safe Kubernetes diagnosis, security triage and GitOps-based remediation"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Jesser Sallemi", email = "jesser.sallemi18@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "kubernetes>=31.0",
+    "mcp>=2.0,<3",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "ruamel.yaml>=0.18",
+    "starlette>=1.9.0",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+kubepilot = "kubepilot.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8",
+    "ruff>=0.5",
+    "types-pyyaml>=6.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "RUF"]
+ignore = ["S101", "S603", "S607", "RUF005"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["kubepilot"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["kubernetes.*", "ruamel.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["kubepilot.source.kube"]
+disallow_untyped_calls = false  # the kubernetes client ships without type hints

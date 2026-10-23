@@ -1,0 +1,6 @@
+# Known-benign runtime alerts. Each entry needs a reason — it shows up in audits.
+falco:
+  - rule: "Read sensitive file untrusted"
+    namespace: batch
+    image: "docker.io/restic/restic:*"
+    reason: "nightly restic backup reads /etc by design"
