@@ -2,7 +2,8 @@ SHELL := /bin/bash
 DEMO_ENV := KUBEPILOT_SOURCE=fixture KUBEPILOT_FIXTURE_DIR=examples/demo-cluster KUBEPILOT_ALLOWLIST=examples/allowlist.yaml
 SCRATCH ?= .demo
 
-.PHONY: install test lint typecheck check demo demo-repo serve-demo serve ingest lab-up lab-down image
+.PHONY: install test lint typecheck check demo demo-repo serve-demo serve ingest image \
+	lab-k3s lab-kind lab-down lab-ingest lab-verify lab-break lab-attack lab-fix lab-approve lab-reset lab-mcp lab-capture
 
 install:            ## install deps into .venv
 	uv sync
@@ -37,11 +38,48 @@ serve:              ## MCP server over stdio against your current kube-context
 ingest:             ## Falcosidekick webhook receiver on :2801
 	uv run kubepilot ingest --host 0.0.0.0
 
-lab-up:             ## kind cluster + Falco/Falcosidekick + Trivy Operator + demo workloads
+# ------------------------------------------------------------------ lab (see docs/TESTING.md)
+LAB_STATE ?= $(HOME)/.local/state/kubepilot
+LAB_REPO  ?= $(HOME)/kubepilot-lab-gitops
+PHASE     ?= baseline
+LAB_ENV := KUBEPILOT_ALERTS_DB=$(LAB_STATE)/alerts.db KUBEPILOT_STATE_DIR=$(LAB_STATE) \
+	KUBEPILOT_ALLOWLIST=lab/allowlist.yaml KUBEPILOT_GITOPS_REPO=$(LAB_REPO) KUBEPILOT_DRY_RUN=false
+
+lab-k3s:            ## single machine: k3s + Falco + Trivy + lab workloads (Ubuntu)
+	./lab/k3s-install.sh
+
+lab-kind:           ## kind variant (Docker Desktop / WSL2)
 	./lab/up.sh
 
 lab-down:
 	kind delete cluster --name kubepilot
+
+lab-ingest:         ## receive Falco alerts (keep running in its own terminal)
+	KUBEPILOT_INGEST_TOKEN=$$(cat $(LAB_STATE)/ingest-token) $(LAB_ENV) uv run kubepilot ingest --host 0.0.0.0
+
+lab-verify:         ## check findings: PHASE=baseline|broken|attacked|fixed
+	$(LAB_ENV) uv run python lab/verify.py --phase $(PHASE)
+
+lab-break:          ## commit + apply two bad releases (OOM, bad image tag)
+	./lab/break.sh
+
+lab-attack:         ## benign attack simulation on shop/payment-api
+	./lab/attack.sh
+
+lab-fix:            ## merge a kubepilot branch and apply it: BRANCH=kubepilot/...
+	./lab/apply-fix.sh $(BRANCH)
+
+lab-approve:        ## human approval for cli mode: ID=<plan-id>
+	$(LAB_ENV) uv run kubepilot approve $(ID)
+
+lab-reset:          ## back to baseline
+	./lab/reset.sh
+
+lab-mcp:            ## MCP server over stdio wired to the lab (what Claude Desktop launches)
+	./lab/mcp.sh
+
+lab-capture:        ## save the live lab as a fixture (turn real bugs into tests)
+	uv run kubepilot capture --out examples/lab-capture-$$(date +%Y%m%d-%H%M)
 
 image:
 	docker build -t kubepilot:dev .

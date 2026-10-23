@@ -1,0 +1,29 @@
+# Allocates ~200MB. Healthy at 512Mi; lab/break.sh lowers the limit to 128Mi -> OOMKilled after a rollout.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: checkout
+          image: polinux/stress:1.0.4
+          command: ["stress", "--vm", "1", "--vm-bytes", "200M", "--vm-hang", "1"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 512Mi

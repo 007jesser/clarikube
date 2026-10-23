@@ -1,0 +1,6 @@
+# Lab allowlist: the backup CronJob reads /etc/shadow on purpose.
+falco:
+  - rule: "Read sensitive file untrusted"
+    namespace: batch
+    image: "*alpine*"
+    reason: "lab backup job reads /etc/shadow by design"

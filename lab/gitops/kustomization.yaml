@@ -1,0 +1,12 @@
+# Lab GitOps repo: the single source of truth for the test workloads.
+# stack.sh copies this into ~/kubepilot-lab-gitops (a git repo) and applies it with `kubectl apply -k`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - checkout.yaml
+  - frontend.yaml
+  - api.yaml
+  - worker.yaml
+  - payment-api.yaml
+  - backup.yaml

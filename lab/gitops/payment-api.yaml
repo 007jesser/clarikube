@@ -1,0 +1,56 @@
+# Attack target: old image (known CVEs), root, no NetworkPolicy, ServiceAccount can read all secrets in shop.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: payment-api
+  namespace: shop
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: payment-api
+  namespace: shop
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: payment-api
+  namespace: shop
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: payment-api
+subjects:
+  - kind: ServiceAccount
+    name: payment-api
+    namespace: shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-api
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-api
+  template:
+    metadata:
+      labels:
+        app: payment-api
+    spec:
+      serviceAccountName: payment-api
+      containers:
+        - name: payment-api
+          image: nginx:1.19.0   # old on purpose: Trivy reports critical CVEs
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi

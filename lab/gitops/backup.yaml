@@ -1,0 +1,29 @@
+# Reads /etc/shadow every 5 minutes "by design" -> noisy Falco alerts that lab/allowlist.yaml suppresses.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+  namespace: batch
+spec:
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: backup
+              image: alpine:3.20
+              command: ["sh", "-c", "cat /etc/shadow > /dev/null; echo backup done"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  memory: 64Mi

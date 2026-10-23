@@ -73,13 +73,17 @@ For a real cluster, drop `KUBEPILOT_SOURCE`/`KUBEPILOT_FIXTURE_DIR`; kubepilot u
 
 **Local models:** any MCP-capable client that talks to Ollama/llama.cpp works the same way; point it at `kubepilot serve` over stdio, or `kubepilot serve --transport http` (→ `http://127.0.0.1:8765/mcp`).
 
-### Real cluster lab (kind + Falco + Trivy)
+### Real cluster lab (one machine: k3s + Falco + Trivy)
 
 ```bash
-make lab-up            # kind cluster, Falco (modern eBPF) + Falcosidekick, Trivy Operator, broken workloads
-make ingest            # receive Falco alerts on :2801 (separate terminal)
-./lab/attack.sh        # benign attack simulation
+make lab-k3s                      # Ubuntu box/VM: k3s, Falco, Trivy Operator, deliberately broken workloads
+make lab-ingest                   # terminal 1: receive Falco alerts
+make lab-verify PHASE=baseline    # automated PASS/WARN/FAIL checks
+make lab-break && make lab-verify PHASE=broken
+make lab-attack && make lab-verify PHASE=attacked
 ```
+
+Full runbook with expected results and troubleshooting: [docs/TESTING.md](docs/TESTING.md). A kind variant exists for Docker Desktop (`make lab-kind`).
 
 ## How it works
 
