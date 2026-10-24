@@ -83,38 +83,41 @@ Expected: Falco alerts mapped to `Deployment/shop/payment-api`; severity high/cr
 
 ## 5. Phase 4: let the AI fix it
 
-### Connect Claude Desktop (on your laptop) to the lab machine over SSH
+### Connect an MCP client (recommended: Claude Code on the lab machine)
 
-1. Make SSH key login work from the laptop without a password: `ssh-keygen` then `ssh-copy-id user@LAB_IP` (on Windows: `type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh user@LAB_IP "cat >> ~/.ssh/authorized_keys"`).
-2. Add to Claude Desktop's `claude_desktop_config.json`:
+kubepilot is a local stdio MCP server, so the client must run where it can start it. Simplest and verified:
 
-```json
-{
-  "mcpServers": {
-    "kubepilot-lab": {
-      "command": "ssh",
-      "args": ["-T", "user@LAB_IP", "~/kubepilot/lab/mcp.sh"]
-    }
-  }
-}
+```bash
+curl -fsSL https://claude.ai/install.sh | bash && source ~/.bashrc
+claude mcp add --scope user kubepilot -- ~/kubepilot/lab/mcp.sh
+claude mcp list            # kubepilot ... ✔ Connected
+cd ~ && claude             # then /mcp should list 10 kubepilot tools
 ```
 
-3. Restart Claude Desktop. Server logs go to `~/.local/state/kubepilot/mcp.log` on the lab machine.
+`--scope user` matters: without it the server is only registered for the folder you ran `claude mcp add` in.
 
-(Or work on the lab machine itself with Claude Code: `claude mcp add kubepilot -- ~/kubepilot/lab/mcp.sh`.)
+**Alternative, Claude Desktop on another machine via SSH:** set up key-based SSH (no password prompt), then add to the
+Desktop app's local MCP config (Settings → Developer → Edit Config):
+
+```json
+{ "mcpServers": { "kubepilot-lab": { "command": "ssh", "args": ["-T", "user@LAB_IP", "~/kubepilot/lab/mcp.sh"] } } }
+```
+
+Only clients that launch **local** MCP servers can use it; cloud-hosted chat sessions cannot reach your lab.
+Server logs: `~/.local/state/kubepilot/mcp.log` on the lab machine.
 
 ### Script to follow in the chat
 
 1. *"Triage the cluster."* It should list the 4 reliability issues plus payment-api as the top incident.
-2. *"Why is checkout failing? Prepare a fix."* Expect a plan restoring `memory: 512Mi` with a one-line diff. Approve it in chat; it commits branch `kubepilot/checkout-…`.
+2. *"Why is checkout failing? Prepare a fix."* Expect a plan restoring `memory: 512Mi` with a one-line diff. Approve it in chat; it commits branch `kubepilot/checkout-…`. Plans expire after 30 minutes; if you approve later, kubepilot refuses and you simply ask for a new plan.
 3. *"Fix frontend too."* Expect a plan reverting the image to `nginx:1.27`.
 4. *"Treat payment-api as an incident."* Expect the containment plan (`isolate-workload`) plus the manual steps (rebuild image, reduce RBAC, rotate credentials).
 5. Merge and apply each branch (this plays the role of Argo CD):
 
 ```bash
 git -C ~/kubepilot-lab-gitops branch          # list kubepilot/* branches
-make lab-fix BRANCH=kubepilot/checkout-xxxx
-make lab-fix BRANCH=kubepilot/frontend-xxxx
+make lab-fix BRANCH=kubepilot/checkout-<id>    # use the real names; run one at a time and type y
+make lab-fix BRANCH=kubepilot/frontend-<id>
 sleep 60 && make lab-verify PHASE=fixed
 ```
 
@@ -144,6 +147,7 @@ make lab-reset                                   # baseline workloads, new lab r
 |---|---|
 | Falco pod CrashLoop, "modern_ebpf" errors | Kernel lacks BTF. `FALCO_DRIVER=kmod ./lab/stack.sh` (needs kernel headers: `sudo apt install linux-headers-$(uname -r)`). |
 | <a id="falco"></a>Alerts arrive but `PHASE=attacked` says not mapped to the workload | Alerts lack `k8s.pod.name`, so Falco can't see containerd. Check `ls -l /run/containerd/containerd.sock` → must point to `/run/k3s/containerd/containerd.sock`; then `kubectl -n falco rollout restart ds/falco`. Check `kubectl -n falco logs ds/falco` for container-engine errors. |
+| `lab-ingest` logs `401 Unauthorized` | Falcosidekick isn't sending the token. Check `kubectl -n falco get secret falco-falcosidekick -o go-template='{{.data.WEBHOOK_CUSTOMHEADERS \| base64decode}}'` shows `Authorization:Bearer ...`; the chart key is `webhook.customHeaders` (camelCase). Keep `make lab-ingest` running: alerts sent while it is stopped are lost. |
 | No alerts at all in `lab-ingest` | `kubectl -n falco logs deploy/falco-falcosidekick` shows webhook errors? Check the URL/IP, `sudo ufw allow from 10.42.0.0/16 to any port 2801`, and that `make lab-ingest` runs. Test: `curl -XPOST -H "Authorization: Bearer $(cat ~/.local/state/kubepilot/ingest-token)" -d '{"rule":"test","priority":"Notice","output_fields":{"k8s.ns.name":"shop","k8s.pod.name":"x"}}' http://<node-ip>:2801/falco` |
 | "Terminal shell in container" missing | Run `lab/attack.sh` from a real terminal (needs `-t`). Falco rule names/priorities change between releases; check `kubectl -n falco logs ds/falco`. |
 | Trivy scan pods stuck in `Init:0/1` and keep restarting | Each job downloads the vulnerability DB and times out. `lab/stack.sh` enables the built-in Trivy server (one download); on an existing install: `helm upgrade trivy-operator aqua/trivy-operator -n trivy-system --reuse-values --set operator.builtInTrivyServer=true --set operator.scanJobTimeout=15m --set operator.scanJobsConcurrentLimit=3` |

@@ -1,4 +1,5 @@
-"""Live backend using the official Kubernetes Python client. Strictly read-only (list calls only).
+"""Live backend using the official Kubernetes Python client. Strictly read-only: list calls, plus
+SelfSubjectAccessReviews (which change nothing) to warn about over-privileged credentials.
 
 Required RBAC is shipped in ``deploy/rbac.yaml``. Secrets are never read.
 """
@@ -48,6 +49,55 @@ class KubeSource:
         self._falco_window = falco_window
         self._cache_ttl = cache_ttl
         self._cache: dict[str | None, tuple[float, Snapshot]] = {}
+        self._authz = client.AuthorizationV1Api(self._api)
+        self._privilege_warnings: list[str] | None = None
+
+    # ------------------------------------------------------------ credential hygiene
+
+    # (verb, group, resource): things a read-only diagnosis tool should NOT be able to do.
+    _RISKY_ACCESS = (
+        ("get", "", "secrets"),
+        ("create", "", "pods"),
+        ("delete", "apps", "deployments"),
+        ("create", "", "pods/exec"),
+    )
+
+    def privilege_warnings(self) -> list[str]:
+        """Warn when kubepilot runs with credentials that can do more than read (it never uses them)."""
+        if self._privilege_warnings is not None:
+            return self._privilege_warnings
+        from kubernetes import client
+
+        allowed: list[str] = []
+        for verb, group, resource in self._RISKY_ACCESS:
+            sub_res = None
+            if "/" in resource:
+                resource, sub_res = resource.split("/", 1)
+            body = client.V1SelfSubjectAccessReview(
+                spec=client.V1SelfSubjectAccessReviewSpec(
+                    resource_attributes=client.V1ResourceAttributes(
+                        verb=verb, group=group, resource=resource, subresource=sub_res
+                    )
+                )
+            )
+            try:
+                resp = self._authz.create_self_subject_access_review(body)
+            except Exception as e:
+                log.debug("access review failed: %s", e)
+                continue
+            if resp.status and resp.status.allowed:
+                allowed.append(f"{verb} {resource}{'/' + sub_res if sub_res else ''}")
+        self._privilege_warnings = (
+            [
+                "kubepilot is using credentials that can "
+                + ", ".join(allowed)
+                + ". It only ever reads, but use a read-only identity (deploy/rbac.yaml) to limit damage "
+                "if the host or MCP client is compromised."
+            ]
+            if allowed
+            else []
+        )
+        return self._privilege_warnings
 
     # ------------------------------------------------------------ helpers
 
@@ -130,7 +180,7 @@ class KubeSource:
         cached = self._cache.get(namespace)
         if cached and time.monotonic() - cached[0] < self._cache_ttl:
             return cached[1]
-        warnings: list[str] = []
+        warnings: list[str] = list(self.privilege_warnings())
         raw = self._fetch_raw(namespace, warnings)
         now = datetime.now(UTC)
         falco = []

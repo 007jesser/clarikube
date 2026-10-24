@@ -18,7 +18,7 @@ import unicodedata
 DEFAULT_MAX = 400
 
 # Zero-width, bidi overrides/isolates, BOM.
-_INVISIBLE = re.compile("[​-‏‪-‮⁠-⁤⁦-⁩﻿]")
+_INVISIBLE = re.compile("[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
 _WS = re.compile(r"\s+")
 
 # Fake framing: chat-role markers, tool-call tags, our own data delimiters.

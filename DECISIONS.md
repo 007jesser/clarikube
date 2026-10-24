@@ -17,3 +17,8 @@
 | 13 | SQLite for Falco alerts, single replica | Simple and sufficient for v1; swap for a real store when multi-replica is needed. |
 | 14 | `harden-security-context` does not set `readOnlyRootFilesystem` | It frequently breaks apps that write to /tmp; flagged as a reviewer note instead. |
 | 15 | MCP Python SDK v2 (`MCPServer`) | Current major version; v1 `FastMCP` API is renamed. |
+| 16 | Demo data ships inside the package (`kubepilot/demo`) | `uvx kubepilot demo` must work without cloning; found by testing the built wheel. |
+| 17 | Platform namespaces hidden from cluster-wide security views by default | Real-cluster test: Falco/Trivy are privileged by design and drowned out application risk. Explicit namespace or `include_system` shows them. |
+| 18 | Ingest refuses to start without a token | Unauthenticated alert injection would let anyone fake or bury incidents. Opt-out env var for throwaway labs only. |
+| 19 | Git hooks disabled for kubepilot's git calls | A planning tool must not execute arbitrary repo code. |
+| 20 | SelfSubjectAccessReview at startup | Users run it with admin kubeconfigs; warn instead of silently holding write power. |

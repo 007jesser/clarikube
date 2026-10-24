@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,9 +45,16 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
     s = Settings.from_env()
     db = s.alerts_db or (s.state_dir / "alerts.db")
-    app = make_ingest_app(AlertStore(db), token=s.ingest_token)
     if not s.ingest_token:
-        logging.warning("KUBEPILOT_INGEST_TOKEN not set: the Falco webhook endpoint is unauthenticated.")
+        if os.environ.get("KUBEPILOT_INGEST_ALLOW_UNAUTHENTICATED", "").lower() not in ("1", "true", "yes"):
+            print(
+                "error: set KUBEPILOT_INGEST_TOKEN (Falcosidekick webhook.customHeaders:"
+                " 'Authorization:Bearer <token>'), or KUBEPILOT_INGEST_ALLOW_UNAUTHENTICATED=true for throwaway labs.",
+                file=sys.stderr,
+            )
+            return 2
+        logging.warning("Running the Falco webhook endpoint WITHOUT authentication.")
+    app = make_ingest_app(AlertStore(db), token=s.ingest_token)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 
@@ -103,6 +111,90 @@ def cmd_reject(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    """Zero-setup demo on the bundled broken cluster; --setup DIR also prepares the plan/commit flow."""
+    import shutil
+    import subprocess
+
+    from kubepilot import demo
+    from kubepilot.config import Settings as S
+    from kubepilot.service import KubePilot
+    from kubepilot.source.fixture import FixtureSource
+
+    if not args.setup:
+        settings = S.from_env()
+        kp = KubePilot(FixtureSource(demo.CLUSTER), _demo_settings(settings, None, None))
+        health = kp.cluster_health()
+        print("kubepilot demo — bundled synthetic cluster (nothing is contacted)\n")
+        for i in health["reliability_issues"]:
+            print(f"  [{i['severity']:>8}] {i['workload']}: {i['title']}")
+        for i in health["security_incidents"]:
+            print(f"  [{i['severity']:>8}] {i['workload']}: security score {i['score']}")
+        print("\nDetails:   kubepilot demo-diagnose shop checkout")
+        print("Fix flow:  kubepilot demo --setup ./kubepilot-demo   (prints an MCP client config)")
+        return 0
+
+    root = Path(args.setup).expanduser().resolve()
+    repo, state = root / "repo", root / "state"
+    if repo.exists():
+        print(f"error: {repo} already exists", file=sys.stderr)
+        return 2
+    shutil.copytree(demo.GITOPS_REPO, repo)
+    for cmd in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A"],
+        ["-c", "user.name=demo", "-c", "user.email=demo@local", "commit", "-qm", "demo baseline"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *cmd], check=True)
+    env = {
+        "KUBEPILOT_SOURCE": "fixture",
+        "KUBEPILOT_GITOPS_REPO": str(repo),
+        "KUBEPILOT_STATE_DIR": str(state),
+        "KUBEPILOT_DRY_RUN": "false",
+    }
+    src_root = Path(__file__).resolve().parents[2]
+    if (src_root / "pyproject.toml").is_file():  # running from a source checkout
+        command, cmd_args = "uv", ["--directory", str(src_root), "run", "kubepilot", "serve"]
+    else:  # installed from PyPI
+        command, cmd_args = "uvx", ["kubepilot", "serve"]
+    cfg = {"mcpServers": {"kubepilot-demo": {"command": command, "args": cmd_args, "env": env}}}
+    print(f"Demo GitOps repo ready at {repo}\n")
+    print(
+        "Claude Code:\n  claude mcp add --scope user kubepilot-demo "
+        + " ".join(f"-e {k}={v}" for k, v in env.items())
+        + f" -- {command} {' '.join(cmd_args)}\n"
+    )
+    print("Other MCP clients (mcpServers JSON):")
+    _print(cfg)
+    print('\nThen ask: "Why is checkout failing? Prepare a fix." and approve the diff.')
+    return 0
+
+
+def _demo_settings(settings: Settings, repo: Path | None, state: Path | None) -> Settings:
+    from dataclasses import replace
+
+    from kubepilot import demo
+
+    return replace(
+        settings,
+        source="fixture",
+        fixture_dir=demo.CLUSTER,
+        allowlist=demo.ALLOWLIST,
+        gitops_repo=repo,
+        state_dir=state or settings.state_dir,
+    )
+
+
+def cmd_demo_diagnose(args: argparse.Namespace) -> int:
+    from kubepilot import demo
+    from kubepilot.service import KubePilot
+    from kubepilot.source.fixture import FixtureSource
+
+    kp = KubePilot(FixtureSource(demo.CLUSTER), _demo_settings(Settings.from_env(), None, None))
+    _print(kp.diagnose_workload(args.namespace, args.name))
+    return 0
+
+
 def cmd_capture(args: argparse.Namespace) -> int:
     """Write a live cluster (or namespace) to a fixture directory, for offline analysis or bug reports."""
     from datetime import UTC, datetime
@@ -111,13 +203,19 @@ def cmd_capture(args: argparse.Namespace) -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    from kubepilot.redact import redact_objects
+
     raw = KubeSource(context=Settings.from_env().kube_context).raw_dump(args.namespace)
     (out / "meta.yaml").write_text(yaml.safe_dump({"now": datetime.now(UTC).isoformat()}))
     for attr in raw.__dataclass_fields__:
         items = getattr(raw, attr)
         if items:
-            (out / f"{attr}.yaml").write_text(yaml.safe_dump({"apiVersion": "v1", "kind": "List", "items": items}))
-    print(f"Captured to {out} (no Secrets are read or written).")
+            doc = {"apiVersion": "v1", "kind": "List", "items": redact_objects(items)}
+            (out / f"{attr}.yaml").write_text(yaml.safe_dump(doc))
+    print(
+        f"Captured to {out}. Secrets are never read; env values, last-applied-configuration and managedFields are "
+        "redacted. Still review the files before sharing them (names, images and labels remain)."
+    )
     return 0
 
 
@@ -161,6 +259,15 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
         s.set_defaults(fn=fn)
 
+    s = sub.add_parser("demo", help="try kubepilot on a bundled broken cluster (no cluster needed)")
+    s.add_argument("--setup", metavar="DIR", help="also create a demo GitOps repo and print an MCP config")
+    s.set_defaults(fn=cmd_demo)
+
+    s = sub.add_parser("demo-diagnose", help="diagnose a workload of the bundled demo cluster")
+    s.add_argument("namespace")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_demo_diagnose)
+
     s = sub.add_parser("capture", help="dump a live cluster to a fixture directory")
     s.add_argument("--out", required=True)
     s.add_argument("-n", "--namespace")
@@ -169,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         return int(args.fn(args))
+    except BrokenPipeError:  # e.g. `kubepilot triage | head`
+        sys.stderr.close()
+        return 0
     except (KeyError, PermissionError, RuntimeError, ValueError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

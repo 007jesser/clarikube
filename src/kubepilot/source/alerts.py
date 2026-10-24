@@ -105,9 +105,17 @@ def make_ingest_app(store: AlertStore, token: str | None = None) -> Any:
             given = request.headers.get("authorization", "")
             if not hmac.compare_digest(given, f"Bearer {token}"):
                 return PlainTextResponse("unauthorized", status_code=401)
-        body = await request.body()
-        if len(body) > MAX_BODY_BYTES:
+        declared = request.headers.get("content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY_BYTES):
             return PlainTextResponse("payload too large", status_code=413)
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():  # cap memory even if Content-Length lies or is absent
+            size += len(chunk)
+            if size > MAX_BODY_BYTES:
+                return PlainTextResponse("payload too large", status_code=413)
+            chunks.append(chunk)
+        body = b"".join(chunks)
         try:
             data = json.loads(body)
         except json.JSONDecodeError:

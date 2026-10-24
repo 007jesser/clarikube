@@ -7,7 +7,6 @@ The MCP layer (`server.py`) and the CLI are thin adapters over this class.
 from __future__ import annotations
 
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 
 from kubepilot import remediation
@@ -100,10 +99,23 @@ class KubePilot:
 
     # ------------------------------------------------------------ read tools
 
-    def cluster_health(self, namespace: str | None = None) -> dict[str, Any]:
+    def _platform_filter(
+        self, incidents: list[SecurityIncident], namespace: str | None, include_system: bool
+    ) -> tuple[list[SecurityIncident], int]:
+        """Platform components (Falco, Trivy, kube-system) are privileged by design; hide them from
+        cluster-wide security views unless asked, so real application risk isn't drowned out."""
+        if namespace or include_system:
+            return incidents, 0
+        sysns = self.settings.system_namespaces
+        kept = [i for i in incidents if i.workload.namespace not in sysns]
+        return kept, len(incidents) - len(kept)
+
+    def cluster_health(self, namespace: str | None = None, include_system: bool = False) -> dict[str, Any]:
         snap = self._snap(namespace)
         findings = diagnose.diagnose_all(snap, min_severity=Severity.MEDIUM)
-        incidents = [i for i in security.triage(snap, self.allowlist) if i.score >= 45]
+        incidents, hidden = self._platform_filter(
+            [i for i in security.triage(snap, self.allowlist) if i.score >= 45], namespace, include_system
+        )
         unhealthy_nodes = [n.name for n in snap.nodes if not n.ready]
         return {
             **self._meta(snap),
@@ -123,7 +135,9 @@ class KubePilot:
                 }
                 for i in incidents[:MAX_ITEMS]
             ],
-            "next_steps": "Use diagnose_workload or investigate_security for details on any item.",
+            "platform_incidents_hidden": hidden,
+            "next_steps": "Use diagnose_workload or investigate_security for details on any item."
+            + (" Pass include_system=true to also see platform namespaces." if hidden else ""),
         }
 
     def diagnose_workload(self, namespace: str, name: str, include_hygiene: bool = True) -> dict[str, Any]:
@@ -178,17 +192,24 @@ class KubePilot:
         }
 
     def security_triage(
-        self, namespace: str | None = None, since_hours: int | None = None, min_score: int = 10
+        self,
+        namespace: str | None = None,
+        since_hours: int | None = None,
+        min_score: int = 10,
+        include_system: bool = False,
     ) -> dict[str, Any]:
         snap = self._snap(namespace)
         since = timedelta(hours=since_hours) if since_hours else None
-        incidents = security.triage(snap, self.allowlist, since=since, min_score=min_score)
+        incidents, hidden = self._platform_filter(
+            security.triage(snap, self.allowlist, since=since, min_score=min_score), namespace, include_system
+        )
         return {
             **self._meta(snap),
             "scoring": "Explicit points per signal (see docs/scoring.md); x1.5 when runtime alerts "
             "co-occur with exploitable CVEs or excessive exposure. 70+ critical, 45+ high, 25+ medium.",
             "incidents": [incident_dict(i) for i in incidents[:MAX_ITEMS]],
             "suppressed_by_allowlist": sum(i.suppressed_alerts for i in incidents),
+            "platform_incidents_hidden": hidden,
         }
 
     def investigate_security(self, namespace: str, name: str) -> dict[str, Any]:
@@ -349,16 +370,20 @@ class KubePilot:
         }
 
     def change_history(self, limit: int = 20) -> dict[str, Any]:
-        return {"events": self._require_plans().history(limit)}
+        return {"events": self._require_plans().history(max(1, min(limit, 200)))}
 
 
 def build_from_settings(settings: Settings) -> KubePilot:
     source: ClusterSource
     if settings.source == "fixture":
+        from kubepilot import demo
         from kubepilot.source.fixture import FixtureSource
 
-        directory = settings.fixture_dir or Path(__file__).resolve().parents[2] / "examples" / "demo-cluster"
-        source = FixtureSource(directory)
+        source = FixtureSource(settings.fixture_dir or demo.CLUSTER)
+        if settings.fixture_dir is None and settings.allowlist is None:
+            from dataclasses import replace
+
+            settings = replace(settings, allowlist=demo.ALLOWLIST)
     else:
         from kubepilot.source.alerts import AlertStore
         from kubepilot.source.kube import KubeSource

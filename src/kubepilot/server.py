@@ -60,9 +60,10 @@ def create_server(kp: KubePilot) -> MCPServer:
 
     @mcp.tool(annotations=READ)
     @_errors
-    def cluster_health(namespace: str | None = None) -> dict[str, Any]:
-        """Overview: unhealthy workloads, high-risk security incidents, node status. Start here."""
-        return kp.cluster_health(namespace)
+    def cluster_health(namespace: str | None = None, include_system: bool = False) -> dict[str, Any]:
+        """Overview: unhealthy workloads, high-risk security incidents, node status. Start here.
+        Platform namespaces (kube-system, falco, ...) are hidden from security results unless include_system."""
+        return kp.cluster_health(namespace, include_system)
 
     @mcp.tool(annotations=READ)
     @_errors
@@ -80,11 +81,14 @@ def create_server(kp: KubePilot) -> MCPServer:
     @mcp.tool(annotations=READ)
     @_errors
     def security_triage(
-        namespace: str | None = None, since_hours: int | None = None, min_score: int = 10
+        namespace: str | None = None,
+        since_hours: int | None = None,
+        min_score: int = 10,
+        include_system: bool = False,
     ) -> dict[str, Any]:
         """Rank workloads by correlated security risk (Falco runtime alerts + Trivy CVEs + RBAC/network
         exposure). Known-benign alerts are suppressed by the allowlist."""
-        return kp.security_triage(namespace, since_hours, min_score)
+        return kp.security_triage(namespace, since_hours, min_score, include_system)
 
     @mcp.tool(annotations=READ)
     @_errors

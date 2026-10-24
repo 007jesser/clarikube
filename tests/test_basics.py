@@ -47,7 +47,7 @@ def test_quantity_invalid() -> None:
 
 
 def test_clean_strips_invisible_and_control() -> None:
-    assert clean("a​b‮c\x07d\n\te") == "abc d e"
+    assert clean("a\u200bb\u202ec\x07d\n\te") == "abc d e"
 
 
 def test_clean_truncates() -> None:

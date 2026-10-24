@@ -527,7 +527,8 @@ class Rollout:
         ]
 
     def rollback_hint(self) -> RemediationHint:
-        assert self.previous is not None
+        if self.previous is None:
+            raise ValueError("no previous revision to roll back to")
         return RemediationHint(
             kind="rollback-template",
             params={"to_revision": str(self.previous.revision), "replicaset": self.previous.name},

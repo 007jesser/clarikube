@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-DEMO_ENV := KUBEPILOT_SOURCE=fixture KUBEPILOT_FIXTURE_DIR=examples/demo-cluster KUBEPILOT_ALLOWLIST=examples/allowlist.yaml
+DEMO_ENV := KUBEPILOT_SOURCE=fixture
 SCRATCH ?= .demo
 # k3s's bundled kubectl otherwise falls back to the root-only /etc/rancher/k3s/k3s.yaml
 export KUBECONFIG ?= $(HOME)/.kube/config
@@ -26,10 +26,8 @@ demo:               ## health + security triage of the bundled demo cluster
 	$(DEMO_ENV) uv run kubepilot triage --security
 
 demo-repo:          ## scratch git copy of the example GitOps repo (for plan/commit demos)
-	rm -rf $(SCRATCH) && mkdir -p $(SCRATCH)
-	cp -r examples/gitops-repo $(SCRATCH)/repo
-	cd $(SCRATCH)/repo && git init -q -b main && git add -A && git -c user.name=demo -c user.email=demo@local commit -qm init
-	@echo "export KUBEPILOT_GITOPS_REPO=$$(pwd)/$(SCRATCH)/repo KUBEPILOT_STATE_DIR=$$(pwd)/$(SCRATCH)/state"
+	rm -rf $(SCRATCH)
+	uv run kubepilot demo --setup $(SCRATCH)
 
 serve-demo: demo-repo   ## MCP server over stdio against the demo fixtures
 	$(DEMO_ENV) KUBEPILOT_GITOPS_REPO=$(SCRATCH)/repo KUBEPILOT_STATE_DIR=$(SCRATCH)/state uv run kubepilot serve

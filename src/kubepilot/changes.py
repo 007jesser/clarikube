@@ -40,7 +40,7 @@ class GitError(Exception):
 def git(repo: Path, *args: str) -> str:
     try:
         r = subprocess.run(
-            ["git", "-C", str(repo), *args],
+            ["git", "-C", str(repo), "-c", "core.hooksPath=/dev/null", *args],
             check=True,
             capture_output=True,
             text=True,

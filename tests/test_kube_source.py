@@ -18,6 +18,7 @@ def _bare() -> KubeSource:
     ks._alerts = None
     ks._cache = {}
     ks._cache_ttl = 0
+    ks._privilege_warnings = None
     return ks
 
 
@@ -82,3 +83,33 @@ def test_other_api_errors_propagate() -> None:
     ks._custom = _Custom(500)
     with pytest.raises(ApiException):
         ks._trivy(None, [])
+
+
+class _Authz:
+    def __init__(self, allowed: set[str]) -> None:
+        self.allowed = allowed
+        self.calls = 0
+
+    def create_self_subject_access_review(self, body: Any) -> Any:
+        self.calls += 1
+        a = body.spec.resource_attributes
+        key = f"{a.verb} {a.resource}" + (f"/{a.subresource}" if a.subresource else "")
+        return client.V1SelfSubjectAccessReview(
+            spec=body.spec, status=client.V1SubjectAccessReviewStatus(allowed=key in self.allowed)
+        )
+
+
+def test_privilege_warning_for_admin_credentials() -> None:
+    ks = _bare()
+    ks._authz = _Authz({"get secrets", "create pods/exec"})
+    (w,) = ks.privilege_warnings()
+    assert "get secrets" in w and "create pods/exec" in w and "read-only identity" in w
+    calls = ks._authz.calls
+    ks.privilege_warnings()
+    assert ks._authz.calls == calls  # cached
+
+
+def test_no_warning_for_read_only_identity() -> None:
+    ks = _bare()
+    ks._authz = _Authz(set())
+    assert ks.privilege_warnings() == []

@@ -6,15 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from kubepilot import demo
 from kubepilot.config import Settings
 from kubepilot.service import KubePilot
 from kubepilot.source.base import Snapshot
 from kubepilot.source.fixture import FixtureSource
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO = ROOT / "examples" / "demo-cluster"
-GITOPS = ROOT / "examples" / "gitops-repo"
-ALLOWLIST = ROOT / "examples" / "allowlist.yaml"
+
+DEMO = demo.CLUSTER
+GITOPS = demo.GITOPS_REPO
+ALLOWLIST = demo.ALLOWLIST
 
 
 @pytest.fixture(scope="session")
