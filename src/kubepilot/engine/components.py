@@ -18,6 +18,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from kubepilot import quantity
 from kubepilot.engine import selectors
@@ -71,7 +72,14 @@ _EXCLUDE = re.compile(r"exporter|operator|dashboards|kibana|insight|commander|ex
 _CR_KINDS: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {
     ("kafka.strimzi.io", "Kafka"): ("kafka", ("strimzi.io/cluster",)),
     ("rabbitmq.com", "RabbitmqCluster"): ("rabbitmq", ("app.kubernetes.io/name",)),
-    ("opensearch.opster.io", "OpenSearchCluster"): ("opensearch", ("opster.io/opensearch-cluster",)),
+    ("opensearch.org", "OpenSearchCluster"): (
+        "opensearch",
+        ("opensearch.org/opensearch-cluster", "opster.io/opensearch-cluster"),
+    ),
+    ("opensearch.opster.io", "OpenSearchCluster"): (
+        "opensearch",
+        ("opensearch.org/opensearch-cluster", "opster.io/opensearch-cluster"),
+    ),
     ("elasticsearch.k8s.elastic.co", "Elasticsearch"): (
         "elasticsearch",
         ("elasticsearch.k8s.elastic.co/cluster-name",),
@@ -85,6 +93,7 @@ _CR_KINDS: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {
 _OPERATOR_NAME = {
     "kafka.strimzi.io": "Strimzi operator",
     "rabbitmq.com": "RabbitMQ cluster operator",
+    "opensearch.org": "OpenSearch operator",
     "opensearch.opster.io": "OpenSearch operator",
     "elasticsearch.k8s.elastic.co": "ECK operator",
     "postgresql.cnpg.io": "CloudNativePG operator",
@@ -133,6 +142,7 @@ class Component:
     specs: list[WorkloadSpec] = field(default_factory=list)
     pods: list[Pod] = field(default_factory=list)
     services: list[ServiceInfo] = field(default_factory=list)
+    pools: list[CustomResource] = field(default_factory=list)  # Strimzi KafkaNodePools of this Kafka
 
     @property
     def key(self) -> str:
@@ -180,6 +190,8 @@ class Component:
 
     @property
     def desired(self) -> int:
+        if self.pools:  # Strimzi KRaft: members are defined by node pools, not the Kafka resource
+            return sum(_int(p.spec.get("replicas")) for p in self.pools)
         if self.specs:
             return sum(s.replicas for s in self.specs)
         if self.cr is not None:
@@ -191,6 +203,21 @@ class Component:
     @property
     def ready(self) -> int:
         return sum(1 for p in self.pods if _pod_ready(p, self.kind))
+
+    @property
+    def brokers_desired(self) -> int:
+        """Kafka brokers (controller-only node pools excluded)."""
+        if self.pools:
+            return sum(_int(p.spec.get("replicas")) for p in self.pools if "broker" in (p.spec.get("roles") or []))
+        return self.desired
+
+    @property
+    def brokers_ready(self) -> int:
+        def broker(p: Pod) -> bool:
+            role = p.labels.get("strimzi.io/broker-role")
+            return role is None or role == "true"
+
+        return sum(1 for p in self.pods if broker(p) and _pod_ready(p, self.kind))
 
     @property
     def pod_labels_selector(self) -> dict[str, str]:
@@ -211,6 +238,13 @@ class Component:
         return common
 
 
+def _int(v: object, default: int = 0) -> int:
+    try:
+        return int(str(v))
+    except (TypeError, ValueError):
+        return default
+
+
 def _cr_desired(cr: CustomResource) -> int | None:
     s = cr.spec
     try:
@@ -229,7 +263,12 @@ def _cr_desired(cr: CustomResource) -> int | None:
             return int(s.get("numberOfInstances", 1))
         if cr.kind == "MongoDBCommunity":
             return int(s.get("members", 1))
-        if cr.kind in ("RedisCluster", "RedisReplication"):
+        if cr.kind == "RedisCluster":  # OT operator: leaders + followers, each defaulting to clusterSize
+            size = int(s.get("clusterSize", 1))
+            leaders = (s.get("redisLeader") or {}).get("replicas")
+            followers = (s.get("redisFollower") or {}).get("replicas")
+            return int(leaders if leaders is not None else size) + int(followers if followers is not None else size)
+        if cr.kind == "RedisReplication":
             return int(s.get("clusterSize", 1))
     except (TypeError, ValueError):
         return None
@@ -257,10 +296,13 @@ def detect(snap: Snapshot) -> list[Component]:
     claimed_specs: set[str] = set()
 
     # 1) operator-managed
+    current_os = {(c.namespace, c.name) for c in snap.custom_resources if c.group == "opensearch.org"}
     for cr in snap.custom_resources:
         entry = _CR_KINDS.get((cr.group, cr.kind))
         if entry is None:
             continue
+        if cr.group == "opensearch.opster.io" and (cr.namespace, cr.name) in current_os:
+            continue  # deprecated group, mirrored by the operator into opensearch.org
         kind, label_keys = entry
         comp = Component(
             kind=kind, namespace=cr.namespace, name=cr.name, managed_by=_OPERATOR_NAME.get(cr.group, cr.group), cr=cr
@@ -268,7 +310,8 @@ def detect(snap: Snapshot) -> list[Component]:
         for p in snap.pods:
             if p.namespace != cr.namespace or (p.namespace, p.name) in claimed_pods:
                 continue
-            if not any(p.labels.get(k) in (cr.name, f"{cr.name}-svc") for k in label_keys):
+            names = (cr.name, f"{cr.name}-svc", f"{cr.name}-leader", f"{cr.name}-follower")
+            if not any(p.labels.get(k) in names for k in label_keys):
                 continue
             if kind == "kafka" and not _strimzi_kafka_node(p, cr.name):
                 continue
@@ -276,6 +319,14 @@ def detect(snap: Snapshot) -> list[Component]:
                 continue
             comp.pods.append(p)
             claimed_pods.add((p.namespace, p.name))
+        if cr.kind == "Kafka":
+            comp.pools = [
+                np
+                for np in snap.custom_resources
+                if np.kind == "KafkaNodePool"
+                and np.namespace == cr.namespace
+                and np.labels.get("strimzi.io/cluster") == cr.name
+            ]
         for s in snap.specs:
             owned = s.owner is not None and s.owner.kind == cr.kind and s.owner.name == cr.name
             if s.namespace == cr.namespace and (owned or any(s.ref == p.workload for p in comp.pods)):
@@ -363,6 +414,39 @@ def _all_args(comp: Component) -> list[str]:
 
 
 _XMX = re.compile(r"-Xmx(\d+)([kKmMgG]?)")
+
+
+@dataclass(frozen=True)
+class Sizing:
+    """Heap and memory limit of one sizing unit (a whole component, or one Strimzi node pool)."""
+
+    scope: str  # "" or "node pool <name>"
+    heap: int | None
+    limit: int | None
+    target: dict[str, str]  # extra hint params naming the resource to edit
+
+
+def _limit_of(resources: object) -> int | None:
+    lim = ((resources or {}).get("limits") or {}).get("memory") if isinstance(resources, dict) else None
+    return int(quantity.parse(str(lim))) if lim else None
+
+
+def sizings(comp: Component) -> list[Sizing]:
+    if comp.pools and comp.cr is not None:
+        base_xmx = ((comp.cr.spec.get("kafka") or {}).get("jvmOptions") or {}).get("-Xmx")
+        out = []
+        for np in comp.pools:
+            xmx = (np.spec.get("jvmOptions") or {}).get("-Xmx") or base_xmx
+            out.append(
+                Sizing(
+                    scope=f"node pool {np.name}",
+                    heap=_heap_to_bytes(str(xmx)) if xmx else None,
+                    limit=_limit_of(np.spec.get("resources")),
+                    target={"target_kind": "KafkaNodePool", "target_name": np.name},
+                )
+            )
+        return out
+    return [Sizing(scope="", heap=jvm_heap_bytes(comp), limit=memory_limit_bytes(comp), target={})]
 
 
 def jvm_heap_bytes(comp: Component) -> int | None:
@@ -609,8 +693,17 @@ def _check_storage(snap: Snapshot, comp: Component) -> list[Finding]:
             )
     ephemeral = False
     if comp.cr is not None and comp.cr.kind == "Kafka":
-        st = ((comp.cr.spec.get("kafka") or {}).get("storage") or {}).get("type")
-        ephemeral = st == "ephemeral"
+        storages = [np.spec.get("storage") or {} for np in comp.pools] or [
+            (comp.cr.spec.get("kafka") or {}).get("storage") or {}
+        ]
+
+        def is_ephemeral(st: dict[str, Any]) -> bool:
+            if st.get("type") == "jbod":
+                vols = st.get("volumes") or []
+                return bool(vols) and all(v.get("type") == "ephemeral" for v in vols)
+            return st.get("type") == "ephemeral"
+
+        ephemeral = any(is_ephemeral(st) for st in storages)
     elif comp.cr is None and comp.specs:
         has_pvc = any(
             s.volume_claim_templates or any(v.kind == "persistentVolumeClaim" for v in s.template_volumes)
@@ -700,8 +793,11 @@ def _check_spread(snap: Snapshot, comp: Component) -> list[Finding]:
 def _check_resources(comp: Component) -> list[Finding]:
     missing = [c.name for c in comp.containers if not c.resources.memory_limit]
     if comp.cr is not None and comp.cr.kind == "Kafka":
-        lim = (((comp.cr.spec.get("kafka") or {}).get("resources") or {}).get("limits") or {}).get("memory")
-        missing = [] if lim else ["kafka"]
+        if comp.pools:
+            missing = [np.name for np in comp.pools if _limit_of(np.spec.get("resources")) is None]
+        else:
+            lim = (((comp.cr.spec.get("kafka") or {}).get("resources") or {}).get("limits") or {}).get("memory")
+            missing = [] if lim else ["kafka"]
     if not missing:
         return []
     return [
@@ -819,6 +915,8 @@ def _check_netpol(snap: Snapshot, comp: Component, client_namespaces: set[str]) 
 
 _READY_TYPES = {"Ready", "ReconcileSuccess", "AllReplicasReady", "ClusterAvailable"}
 _HEALTHY_PHASES = {"running", "ready", "cluster in healthy state", "healthy"}
+# Phases that mean "failed", not "busy": Zalando *Failed/Invalid, ECK Invalid/Stalled, MongoDB Failed, OT Redis Failed.
+_FAILED_PHASE_WORDS = ("fail", "invalid", "stalled", "error", "unable", "cannot")
 
 
 def _check_operator_status(comp: Component) -> list[Finding]:
@@ -831,9 +929,25 @@ def _check_operator_status(comp: Component) -> list[Finding]:
         for c in cr.conditions
         if (c.type in _READY_TYPES and c.status == "False") or (c.type == "NotReady" and c.status == "True")
     ]
-    phase = str(cr.status.get("phase") or cr.status.get("PostgresClusterStatus") or "")
-    phase_bad = bool(phase) and phase.strip().lower() not in _HEALTHY_PHASES
-    if bad or phase_bad:
+    phase = str(cr.status.get("phase") or cr.status.get("PostgresClusterStatus") or cr.status.get("state") or "")
+    p_low = phase.strip().lower()
+    phase_bad = bool(phase) and p_low not in _HEALTHY_PHASES
+    failed = bool(bad) or any(w in p_low for w in _FAILED_PHASE_WORDS)
+    if phase_bad and not failed:
+        # Creating / Updating / ApplyingChanges / Pending / Initializing...: the operator is still working.
+        out.append(
+            _finding(
+                comp,
+                "operator-busy",
+                f"{comp.label}: the {_OPERATOR_NAME.get(cr.group, 'operator')} is still reconciling "
+                f"({clean(phase, 60)})",
+                Severity.MEDIUM,
+                "The operator is applying a change or creating members; this is normal during rollouts "
+                "but a problem if it stays in this phase.",
+                evidence=[Evidence(source="operator", detail=f"phase: {clean(phase, 120)}")],
+            )
+        )
+    elif bad or phase_bad:
         ev = [
             Evidence(source="operator", detail=f"{c.type}={c.status} {c.reason or ''}: {clean(c.message, 240)}")
             for c in bad[:4]
@@ -879,12 +993,23 @@ def _check_operator_status(comp: Component) -> list[Finding]:
 def _check_jvm(comp: Component) -> list[Finding]:
     if comp.kind not in JVM_KINDS:
         return []
-    heap, limit = jvm_heap_bytes(comp), memory_limit_bytes(comp)
+    out: list[Finding] = []
+    for sz in sizings(comp):
+        out += _check_heap(comp, sz)
+    return out
+
+
+def _check_heap(comp: Component, sz: Sizing) -> list[Finding]:
+    heap, limit = sz.heap, sz.limit
     if heap is None or limit is None:
         return []
     hs, ls = quantity.format_memory(heap), quantity.format_memory(limit)
     search = comp.kind in ("opensearch", "elasticsearch")
-    target = heap * 2 if search else math.ceil(heap / 0.75)
+    raw = heap * 2 if search else math.ceil(heap / 0.75)
+    step = 512 * 2**20 if raw > 2**30 else 128 * 2**20  # round up to a value humans would write
+    target = math.ceil(raw / step) * step
+    where = f" ({sz.scope})" if sz.scope else ""
+    rule = "heap" + (f"-{sz.target.get('target_name')}" if sz.target else "")
     hint = RemediationHint(
         kind="set-memory-limit",
         params={
@@ -892,15 +1017,16 @@ def _check_jvm(comp: Component) -> list[Finding]:
             "current": ls,
             "proposed": quantity.format_memory(Decimal(target)),
             "jvm": "true",
+            **sz.target,
         },
-        summary=f"Raise the memory limit to {quantity.format_memory(Decimal(target))} (or lower the heap)",
+        summary=f"Raise the memory limit{where} to {quantity.format_memory(Decimal(target))} (or lower the heap)",
     )
     if heap >= limit:
         return [
             _finding(
                 comp,
-                "heap",
-                f"{comp.label}: JVM heap ({hs}) is not smaller than the memory limit ({ls})",
+                rule,
+                f"{comp.label}{where}: JVM heap ({hs}) is not smaller than the memory limit ({ls})",
                 Severity.CRITICAL,
                 "The heap alone fills the container's memory; with thread stacks, "
                 "metaspace and direct buffers the kernel will OOM-kill the JVM under load.",
@@ -912,8 +1038,8 @@ def _check_jvm(comp: Component) -> list[Finding]:
         return [
             _finding(
                 comp,
-                "heap",
-                f"{comp.label}: JVM heap ({hs}) leaves little headroom under the limit ({ls})",
+                rule,
+                f"{comp.label}{where}: JVM heap ({hs}) leaves little headroom under the limit ({ls})",
                 Severity.HIGH,
                 "JVM off-heap memory needs roughly 25% of the limit; above 75% heap the "
                 "container is likely to be OOM-killed.",
@@ -925,8 +1051,8 @@ def _check_jvm(comp: Component) -> list[Finding]:
         return [
             _finding(
                 comp,
-                "heap",
-                f"{comp.label}: heap ({hs}) is more than half the memory limit ({ls})",
+                rule,
+                f"{comp.label}{where}: heap ({hs}) is more than half the memory limit ({ls})",
                 Severity.MEDIUM,
                 f"{DISPLAY[comp.kind]} relies on the OS page cache for Lucene segments; "
                 "the recommended heap is at most 50% of available memory.",
@@ -941,7 +1067,8 @@ def _check_kafka(comp: Component) -> list[Finding]:
     if comp.kind != "kafka":
         return []
     cfg = kafka_config(comp)
-    brokers = comp.desired
+    brokers = comp.brokers_desired
+    ready = comp.brokers_ready
     out: list[Finding] = []
 
     def num(key: str) -> int | None:
@@ -965,7 +1092,7 @@ def _check_kafka(comp: Component) -> list[Finding]:
             )
         )
     if rf is not None and isr is not None and isr >= rf and rf > 1:
-        sev = Severity.CRITICAL if comp.ready < isr else Severity.HIGH
+        sev = Severity.CRITICAL if ready < isr else Severity.HIGH
         out.append(
             _finding(
                 comp,
@@ -976,9 +1103,8 @@ def _check_kafka(comp: Component) -> list[Finding]:
                 "Producers using acks=all fail as soon as one replica is unavailable (rolling restarts "
                 "included). Use min.insync.replicas = replication factor - 1 (typically RF 3, ISR 2)."
                 + (
-                    f" Right now only {comp.ready} brokers are ready, so writes are already failing with "
-                    "NotEnoughReplicas."
-                    if comp.ready < isr
+                    f" Right now only {ready} brokers are ready, so writes are already failing with NotEnoughReplicas."
+                    if ready < isr
                     else ""
                 ),
                 category="config",
@@ -993,12 +1119,12 @@ def _check_kafka(comp: Component) -> list[Finding]:
                 else [],
             )
         )
-    elif isr is not None and comp.ready < isr <= brokers:
+    elif isr is not None and ready < isr <= brokers:
         out.append(
             _finding(
                 comp,
                 "isr-down",
-                f"{comp.label}: fewer brokers ready ({comp.ready}) than min.insync.replicas ({isr})",
+                f"{comp.label}: fewer brokers ready ({ready}) than min.insync.replicas ({isr})",
                 Severity.CRITICAL,
                 "Writes with acks=all are rejected (NotEnoughReplicas) until more brokers recover.",
             )

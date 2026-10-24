@@ -9,6 +9,9 @@ Data systems and the full fix lifecycle.
 - New fixes: `add-pdb`, `make-service-internal`, `set-kafka-config`, scoped `restrict-ingress`; edits to operator CRs and Helm values (Argo CD, Flux, values files).
 - New tools: `list_components`, `diagnose_component`, `verify_fix`, `plan_revert`. `cluster_health` lists components and likely root causes.
 - Security triage: +15 for workloads exposed via LoadBalancer/NodePort.
+- `kubepilot ask`: agent loop for local/OpenAI-compatible models (Ollama, LM Studio, vLLM); JSON transcripts. `kubepilot commit`: human-only, TTY-confirmed commit.
+- Operator support verified against upstream: Strimzi 1.x `v1` API and KRaft node pools (legacy `v1beta2` still read), OpenSearch operator's new `opensearch.org` group, OT Redis leader/follower topology, busy vs failed operator phases.
+- Release workflow (PyPI trusted publishing + GHCR image), `scripts/brand.py` to set the GitHub owner / rename.
 - Demo cluster gains a `data` namespace and an `orders` app; optional `make lab-data` for real clusters.
 
 ## 0.1.0

@@ -59,8 +59,17 @@ def _errors[F: Callable[..., Any]](fn: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
+def _version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("kubepilot")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
 def create_server(kp: KubePilot) -> MCPServer:
-    mcp = MCPServer(name="kubepilot", instructions=INSTRUCTIONS, version="0.1.0")
+    mcp = MCPServer(name="kubepilot", instructions=INSTRUCTIONS, version=_version())
 
     @mcp.tool(annotations=READ)
     @_errors

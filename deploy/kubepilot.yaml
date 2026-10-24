@@ -27,7 +27,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: ingest
-          image: ghcr.io/OWNER/kubepilot:0.1.0   # build with the repo Dockerfile
+          image: ghcr.io/OWNER/kubepilot:0.2.0   # build with the repo Dockerfile
           args: [ingest, --host, 0.0.0.0, --port, "2801"]
           env:
             - {name: KUBEPILOT_ALERTS_DB, value: /data/alerts.db}
@@ -44,7 +44,7 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts: [{name: data, mountPath: /data}]
         - name: mcp
-          image: ghcr.io/OWNER/kubepilot:0.1.0
+          image: ghcr.io/OWNER/kubepilot:0.2.0
           args: [serve, --transport, http, --host, 0.0.0.0, --port, "8765"]
           env:
             - {name: KUBEPILOT_SOURCE, value: kube}

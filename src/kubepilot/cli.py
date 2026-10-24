@@ -105,6 +105,74 @@ def cmd_approve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confirm_on_tty(prompt: str) -> bool:
+    """Ask a human. Refuses when there is no terminal (e.g. an AI agent running the command in a shell tool)."""
+    if not sys.stdin.isatty():
+        print("refusing: no interactive terminal (a human must run this command)", file=sys.stderr)
+        return False
+    try:
+        with open("/dev/tty") as tty:
+            print(prompt, end="", flush=True)
+            return tty.readline().strip().lower() in ("y", "yes")
+    except OSError:
+        return input(prompt).strip().lower() in ("y", "yes")
+
+
+def cmd_commit(args: argparse.Namespace) -> int:
+    """Human-only commit path (used with `kubepilot ask` or without an MCP client)."""
+    kp = _service()
+    store = kp._require_plans()
+    plan = store.get(args.plan_id)
+    cmd_show(args)
+    if not _confirm_on_tty(f"Commit plan {plan.id} for {plan.workload.key} to a new branch? [y/N] "):
+        print("Not committed.")
+        return 1
+    done = store.commit(plan.id, None, human=True)
+    status = "dry-run: nothing written (KUBEPILOT_DRY_RUN=false to commit)" if store.dry_run else done.status
+    print(f"{status}; branch {done.branch} commit {done.commit or '-'}" + (f" PR {done.pr_url}" if done.pr_url else ""))
+    return 0
+
+
+def cmd_ask(args: argparse.Namespace) -> int:
+    from kubepilot import agent
+
+    model = args.model or os.environ.get("KUBEPILOT_LLM_MODEL")
+    if not model:
+        print("set --model or KUBEPILOT_LLM_MODEL (e.g. qwen2.5:7b-instruct for Ollama)", file=sys.stderr)
+        return 2
+    base = args.base_url or os.environ.get("KUBEPILOT_LLM_BASE_URL") or "http://localhost:11434/v1"
+    key = os.environ.get("KUBEPILOT_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    kp = _service()
+    try:
+        tr = agent.ask(
+            kp,
+            args.question,
+            model=model,
+            base_url=base,
+            api_key=key,
+            max_steps=args.max_steps,
+            max_tool_chars=args.max_tool_chars,
+            log=lambda m: print(f"\033[2m{m}\033[0m", file=sys.stderr),
+        )
+    except BaseException as e:
+        leaf: BaseException = e
+        while isinstance(leaf, BaseExceptionGroup) and leaf.exceptions:
+            leaf = leaf.exceptions[0]
+        if isinstance(leaf, (RuntimeError, ValueError)):
+            print(f"error: {leaf}", file=sys.stderr)
+            return 2
+        raise
+    print(tr.answer or f"(no answer: stopped after {len(tr.steps)} tool calls, reason={tr.stopped})")
+    print(
+        f"\033[2m[{tr.model}: {len(tr.steps)} tool calls, {tr.prompt_tokens}+{tr.completion_tokens} tokens, "
+        f"{tr.seconds:.1f}s]\033[0m",
+        file=sys.stderr,
+    )
+    if args.transcript:
+        Path(args.transcript).write_text(json.dumps(tr.to_json(), indent=2, ensure_ascii=False))
+    return 0 if tr.answer else 1
+
+
 def cmd_reject(args: argparse.Namespace) -> int:
     _service()._require_plans().reject(args.plan_id)
     print(f"Rejected {args.plan_id}.")
@@ -256,8 +324,18 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("plans", help="list remediation plans")
     s.set_defaults(fn=cmd_plans)
 
+    s = sub.add_parser("ask", help="ask a local/OpenAI-compatible model to investigate (no MCP client needed)")
+    s.add_argument("question")
+    s.add_argument("--model", help="model name (env KUBEPILOT_LLM_MODEL), e.g. qwen2.5:7b-instruct")
+    s.add_argument("--base-url", help="OpenAI-compatible base URL (env KUBEPILOT_LLM_BASE_URL; default Ollama)")
+    s.add_argument("--max-steps", type=int, default=8)
+    s.add_argument("--max-tool-chars", type=int, default=6000, help="truncate each tool result for small models")
+    s.add_argument("--transcript", help="write a JSON transcript (tool calls, tokens, timings)")
+    s.set_defaults(fn=cmd_ask)
+
     for name, fn, helptext in (
         ("show", cmd_show, "show a plan's diff"),
+        ("commit", cmd_commit, "commit a plan to a new branch (human at a terminal only)"),
         ("approve", cmd_approve, "approve a plan (human, at a terminal)"),
         ("reject", cmd_reject, "reject a plan"),
     ):

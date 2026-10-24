@@ -153,20 +153,22 @@ class KubeSource:
         from kubernetes.client.exceptions import ApiException
 
         out: list[dict[str, Any]] = []
-        for group, version, plural, kind in OPERATOR_CRDS:
-            try:
-                if ns:
-                    resp = self._custom.list_namespaced_custom_object(group, version, ns, plural)
-                else:
-                    resp = self._custom.list_cluster_custom_object(group, version, plural)
-            except ApiException as e:
-                if e.status in (403, 404):
-                    continue
-                raise
-            for item in cast(dict[str, Any], resp).get("items", []):
-                item.setdefault("kind", kind)
-                item.setdefault("apiVersion", f"{group}/{version}")
-                out.append(item)
+        for group, versions, plural, kind in OPERATOR_CRDS:
+            for version in versions:
+                try:
+                    if ns:
+                        resp = self._custom.list_namespaced_custom_object(group, version, ns, plural)
+                    else:
+                        resp = self._custom.list_cluster_custom_object(group, version, plural)
+                except ApiException as e:
+                    if e.status in (403, 404):
+                        continue  # not installed / version not served / not allowed: try the next version
+                    raise
+                for item in cast(dict[str, Any], resp).get("items", []):
+                    item.setdefault("kind", kind)
+                    item.setdefault("apiVersion", f"{group}/{version}")
+                    out.append(item)
+                break  # first served version wins
         return out
 
     # ------------------------------------------------------------ API

@@ -227,17 +227,18 @@ class PlanStore:
         self.audit("plan_rejected", plan_id=plan.id)
         return plan
 
-    def _check(self, plan: ChangePlan, token: str, now: datetime) -> None:
+    def _check(self, plan: ChangePlan, token: str | None, now: datetime) -> None:
+        """token=None means a human confirmed at a terminal (``kubepilot commit``); all other checks apply."""
         if plan.status != "pending":
             raise PermissionError(f"plan is {plan.status}")
         if now > plan.expires_at:
             plan.status = "expired"
             self.save(plan)
             raise PermissionError("plan expired — create a new plan")
-        if not hmac.compare_digest(_sha(token), plan.token_sha):
+        if token is not None and not hmac.compare_digest(_sha(token), plan.token_sha):
             self.audit("commit_denied", plan_id=plan.id, reason="bad token")
             raise PermissionError("invalid approval token")
-        if self.approval_mode == "cli" and not (self.state_dir / "approvals" / plan.id).exists():
+        if token is not None and self.approval_mode == "cli" and not (self.state_dir / "approvals" / plan.id).exists():
             raise PermissionError(f"awaiting human approval: run `kubepilot approve {plan.id}` in a terminal")
         if plan.blocked:
             raise PermissionError("plan is blocked: " + "; ".join(plan.blocking_reasons))
@@ -249,10 +250,16 @@ class PlanStore:
             if current != f.before_sha:
                 raise PermissionError(f"stale plan: {f.path} changed since planning — re-plan")
 
-    def commit(self, plan_id: str, token: str, now: datetime | None = None) -> ChangePlan:
+    def commit(self, plan_id: str, token: str | None, now: datetime | None = None, human: bool = False) -> ChangePlan:
+        """Commit with the plan's approval token, or with ``human=True`` (and token None) when a person confirmed
+        it interactively at a terminal."""
+        if token is None and not human:
+            raise PermissionError("approval token required")
         now = now or datetime.now(UTC)
         plan = self.get(plan_id)
         self._check(plan, token, now)
+        if human:
+            self.audit("plan_approved_terminal", plan_id=plan.id)
         branch = f"kubepilot/{plan.workload.name}-{plan.id}"
         if self.dry_run:
             self.audit("commit_dry_run", plan_id=plan.id, branch=branch)

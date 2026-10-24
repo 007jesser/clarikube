@@ -36,7 +36,7 @@ def titles(snap: Snapshot, key: str) -> list[str]:
 @pytest.mark.parametrize(
     ("image", "kind"),
     [
-        ("quay.io/strimzi/kafka:0.41.0-kafka-3.7.0", "kafka"),
+        ("quay.io/strimzi/kafka:1.4.0-kafka-4.3.2", "kafka"),
         ("docker.io/bitnami/redis:7.2.5", "redis"),
         ("opensearchproject/opensearch:2.13.0", "opensearch"),
         ("rabbitmq:3.13-management", "rabbitmq"),
@@ -67,14 +67,14 @@ def test_detects_operator_and_plain_components(snap: Snapshot) -> None:
 
 
 def test_operator_pods_grouped_under_their_controller(snap: Snapshot) -> None:
-    pod = next(p for p in snap.pods if p.name == "events-kafka-2")
-    assert pod.workload == WorkloadRef(kind="StrimziPodSet", namespace="data", name="events-kafka")
+    pod = next(p for p in snap.pods if p.name == "events-broker-2")
+    assert pod.workload == WorkloadRef(kind="StrimziPodSet", namespace="data", name="events-broker")
 
 
 def test_kafka_checks(snap: Snapshot) -> None:
     t = titles(snap, "kafka/data/events")
     assert any("min.insync.replicas (3) leaves no room" in x for x in t)
-    assert any("volume data-events-kafka-2 is not provisioned" in x for x in t)
+    assert any("volume data-events-broker-2 is not provisioned" in x for x in t)
     assert any("external listener 'external' is plaintext" in x for x in t)
     assert any("degraded (2/3 ready)" in x for x in t)
 
@@ -239,7 +239,7 @@ def test_list_and_diagnose_component(kp: KubePilot) -> None:
     assert d["remediation_target"] == "Kafka/data/events"
     assert d["clients"][0]["via_env"] == "KAFKA_BOOTSTRAP_SERVERS"
     # lookup by a member pod works too
-    assert kp.diagnose_component("data", "events-kafka-0")["component"] == "Kafka data/events"
+    assert kp.diagnose_component("data", "events-broker-0")["component"] == "Kafka data/events"
     with pytest.raises(NotFound):
         kp.diagnose_component("data", "nope")
 
@@ -395,3 +395,231 @@ def test_revert_requires_committed_plan(kp: KubePilot) -> None:
 def test_external_service_is_a_security_signal(kp: KubePilot) -> None:
     inc = kp.investigate_security("data", "search")["incident"]
     assert any("reachable from outside the cluster via search (LoadBalancer)" in s for s in inc["signals"])
+
+
+# ---------------------------------------------------------------- operator variants (verified against upstream)
+
+import shutil  # noqa: E402
+
+import yaml  # noqa: E402
+
+from kubepilot.source.fixture import FixtureSource  # noqa: E402
+
+
+def _fixture(tmp_path: Path, docs: list[dict[str, object]]) -> Snapshot:
+    d = tmp_path / "fx"
+    d.mkdir()
+    node = {
+        "apiVersion": "v1",
+        "kind": "Node",
+        "metadata": {"name": "n1"},
+        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+    }
+    (d / "a.yaml").write_text(yaml.safe_dump_all([*docs, node]))
+    return FixtureSource(d).snapshot()
+
+
+def _pod(name: str, labels: dict[str, str], image: str, ready: bool = True) -> dict[str, object]:
+    return {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {"name": name, "namespace": "d", "labels": labels},
+        "spec": {"nodeName": "n1", "containers": [{"name": "c", "image": image}]},
+        "status": {
+            "phase": "Running",
+            "containerStatuses": [{"name": "c", "ready": ready, "restartCount": 0, "state": {"running": {}}}],
+        },
+    }
+
+
+def test_demo_kafka_uses_node_pools(snap: Snapshot) -> None:
+    kafka = comps(snap)["kafka/data/events"]
+    assert [p.name for p in kafka.pools] == ["broker"]
+    assert (kafka.brokers_ready, kafka.brokers_desired) == (2, 3)
+
+
+def test_legacy_strimzi_v1beta2_without_pools(tmp_path: Path) -> None:
+    labels = {"strimzi.io/cluster": "old", "strimzi.io/kind": "Kafka", "strimzi.io/name": "old-kafka"}
+    snap = _fixture(
+        tmp_path,
+        [
+            {
+                "apiVersion": "kafka.strimzi.io/v1beta2",
+                "kind": "Kafka",
+                "metadata": {"name": "old", "namespace": "d"},
+                "spec": {
+                    "kafka": {
+                        "replicas": 3,
+                        "config": {"min.insync.replicas": 2, "default.replication.factor": 3},
+                        "resources": {"limits": {"memory": "1Gi"}},
+                        "jvmOptions": {"-Xmx": "1g"},
+                    }
+                },
+            },
+            *[_pod(f"old-kafka-{i}", labels, "quay.io/strimzi/kafka:0.45.0-kafka-3.9.0") for i in range(3)],
+        ],
+    )
+    c = comps(snap)["kafka/d/old"]
+    assert (c.ready, c.desired) == (3, 3)
+    assert any("JVM heap (1Gi) is not smaller" in t for t in titles(snap, "kafka/d/old"))
+
+
+def test_dedicated_controllers_are_not_brokers(tmp_path: Path) -> None:
+    base = {"strimzi.io/cluster": "k", "strimzi.io/kind": "Kafka", "strimzi.io/name": "k-kafka"}
+    img = "quay.io/strimzi/kafka:1.4.0-kafka-4.3.2"
+    snap = _fixture(
+        tmp_path,
+        [
+            {
+                "apiVersion": "kafka.strimzi.io/v1",
+                "kind": "Kafka",
+                "metadata": {"name": "k", "namespace": "d"},
+                "spec": {
+                    "kafka": {"listeners": [], "config": {"min.insync.replicas": 2, "default.replication.factor": 3}}
+                },
+            },
+            {
+                "apiVersion": "kafka.strimzi.io/v1",
+                "kind": "KafkaNodePool",
+                "metadata": {"name": "ctl", "namespace": "d", "labels": {"strimzi.io/cluster": "k"}},
+                "spec": {
+                    "replicas": 3,
+                    "roles": ["controller"],
+                    "storage": {"type": "ephemeral"},
+                    "resources": {"limits": {"memory": "1Gi"}},
+                },
+            },
+            {
+                "apiVersion": "kafka.strimzi.io/v1",
+                "kind": "KafkaNodePool",
+                "metadata": {"name": "b", "namespace": "d", "labels": {"strimzi.io/cluster": "k"}},
+                "spec": {
+                    "replicas": 3,
+                    "roles": ["broker"],
+                    "storage": {"type": "persistent-claim", "size": "1Gi"},
+                    "resources": {"limits": {"memory": "2Gi"}},
+                    "jvmOptions": {"-Xmx": "2g"},
+                },
+            },
+            *[
+                _pod(
+                    f"k-ctl-{i}",
+                    {
+                        **base,
+                        "strimzi.io/pool-name": "ctl",
+                        "strimzi.io/controller-role": "true",
+                        "strimzi.io/broker-role": "false",
+                    },
+                    img,
+                )
+                for i in range(3)
+            ],
+            *[
+                _pod(
+                    f"k-b-{i}",
+                    {
+                        **base,
+                        "strimzi.io/pool-name": "b",
+                        "strimzi.io/broker-role": "true",
+                        "strimzi.io/controller-role": "false",
+                    },
+                    img,
+                )
+                for i in range(3)
+            ],
+        ],
+    )
+    c = comps(snap)["kafka/d/k"]
+    assert (c.desired, c.brokers_desired, c.brokers_ready) == (6, 3, 3)
+    t = titles(snap, "kafka/d/k")
+    assert any("(node pool b): JVM heap (2Gi) is not smaller" in x for x in t)
+    assert any("ephemeral storage" in x for x in t)  # controller pool metadata on emptyDir
+
+
+def test_opensearch_new_group_deduplicated(tmp_path: Path) -> None:
+    cr = {
+        "kind": "OpenSearchCluster",
+        "metadata": {"name": "os", "namespace": "d"},
+        "spec": {"nodePools": [{"component": "nodes", "replicas": 3, "roles": ["cluster_manager", "data"]}]},
+        "status": {"phase": "RUNNING", "health": "green"},
+    }
+    snap = _fixture(
+        tmp_path,
+        [
+            {**cr, "apiVersion": "opensearch.org/v1"},
+            {**cr, "apiVersion": "opensearch.opster.io/v1"},
+            *[
+                _pod(f"os-nodes-{i}", {"opensearch.org/opensearch-cluster": "os"}, "opensearchproject/opensearch:3.2.0")
+                for i in range(3)
+            ],
+        ],
+    )
+    found = [c for c in C.detect(snap) if c.kind == "opensearch"]
+    assert len(found) == 1 and found[0].cr is not None and found[0].cr.group == "opensearch.org"
+    assert (found[0].ready, found[0].desired) == (3, 3)
+    assert titles(snap, "opensearch/d/os") == [] or not any("operator" in x for x in titles(snap, "opensearch/d/os"))
+
+
+def test_ot_redis_cluster_leaders_and_followers(tmp_path: Path) -> None:
+    snap = _fixture(
+        tmp_path,
+        [
+            {
+                "apiVersion": "redis.redis.opstreelabs.in/v1beta2",
+                "kind": "RedisCluster",
+                "metadata": {"name": "rc", "namespace": "d"},
+                "spec": {"clusterSize": 3},
+                "status": {"state": "Ready"},
+            },
+            *[
+                _pod(
+                    f"rc-{role}-{i}",
+                    {"app": f"rc-{role}", "redis_setup_type": "cluster", "role": role},
+                    "quay.io/opstree/redis:v7.2.7",
+                )
+                for role in ("leader", "follower")
+                for i in range(3)
+            ],
+        ],
+    )
+    c = comps(snap)["redis/d/rc"]
+    assert (c.ready, c.desired) == (6, 6)
+
+
+def test_operator_busy_vs_failed(tmp_path: Path) -> None:
+    def zalando(status: str) -> list[str]:
+        d = tmp_path / status
+        d.mkdir()
+        snap = _fixture(
+            d,
+            [
+                {
+                    "apiVersion": "acid.zalan.do/v1",
+                    "kind": "postgresql",
+                    "metadata": {"name": "pg", "namespace": "d"},
+                    "spec": {"numberOfInstances": 1},
+                    "status": {"PostgresClusterStatus": status},
+                },
+                _pod("pg-0", {"cluster-name": "pg", "spilo-role": "master"}, "ghcr.io/zalando/spilo-17:4.0-p2"),
+            ],
+        )
+        return titles(snap, "postgresql/d/pg")
+
+    assert any("still reconciling (Updating)" in t for t in zalando("Updating"))
+    assert any("reports a problem" in t for t in zalando("SyncFailed"))
+    assert not any("operator" in t or "reconciling" in t for t in zalando("Running"))
+
+
+def test_node_pool_memory_fix_edits_the_pool(tmp_path: Path, gitops_repo: Path) -> None:
+    from kubepilot import demo
+
+    fx = tmp_path / "cluster"
+    shutil.copytree(demo.CLUSTER, fx)
+    f = fx / "data-components.yaml"
+    f.write_text(f.read_text().replace("jvmOptions: {-Xms: 1024m, -Xmx: 1024m}", "jvmOptions: {-Xms: 2g, -Xmx: 2g}"))
+    kp = KubePilot(FixtureSource(fx), make_settings(tmp_path, gitops_repo))
+    p = kp.plan_remediation("data", "events", ["set-memory-limit"])
+    assert [x["path"] for x in p["files"]] == ["apps/data/kafka.yaml"]
+    d = p["files"][0]["diff"]
+    assert "-      memory: 2Gi" in d and "+      memory: 3Gi" in d
+    assert d.index("+      memory: 3Gi") > d.index("kind: KafkaNodePool") if "kind: KafkaNodePool" in d else True

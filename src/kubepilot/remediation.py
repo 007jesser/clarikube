@@ -376,7 +376,23 @@ def build(
         paths = ", ".join(f"{c.path}#{c.index}" for c in candidates)
         raise RemediationError(f"ambiguous: multiple manifests match {wl.key}: {paths}")
     target = candidates[0] if candidates else None
-    field_hints = [h for h in automatable if h.kind in FIELD_KINDS]
+    # Hints that name another resource (e.g. a Strimzi KafkaNodePool) edit that resource's manifest.
+    other: dict[tuple[str, str], list[RemediationHint]] = {}
+    for h in automatable:
+        if h.kind in FIELD_KINDS and h.params.get("target_kind") and h.params.get("target_name"):
+            other.setdefault((h.params["target_kind"], h.params["target_name"]), []).append(h)
+    for (tkind, tname), group in other.items():
+        tref = WorkloadRef(kind=tkind, namespace=wl.namespace, name=tname)
+        docs = mf.locate(repo, tref)
+        if len(docs) != 1:
+            raise RemediationError(f"{'no' if not docs else 'ambiguous'} manifest for {tref.key} in the GitOps repo")
+        e = _Edit(repo, docs[0].path, docs[0].index)
+        _apply_field_edits(e.doc, snap, group, applied, notes)
+        ch = e.change()
+        if ch:
+            changes.append(ch)
+    targeted = {id(h) for g in other.values() for h in g}
+    field_hints = [h for h in automatable if h.kind in FIELD_KINDS and id(h) not in targeted]
     main: _Edit | None = None
     if field_hints:
         if target is None:

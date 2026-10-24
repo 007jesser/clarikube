@@ -35,18 +35,30 @@ have not yet been checked against a live cluster in this repo's CI.
 - Default rule priorities: "Terminal shell in container" = Notice, "Read sensitive file untrusted" =
   Warning, "Drop and execute new binary in container" = Critical (rule sets change between releases).
 
-## Operators — **verify**
-CRDs read when present (`source/crds.py`; missing ones are skipped, 403s are skipped):
-`kafkas`/`kafkanodepools.kafka.strimzi.io/v1beta2`, `rabbitmqclusters.rabbitmq.com/v1beta1`,
-`opensearchclusters.opensearch.opster.io/v1`, `elasticsearches.elasticsearch.k8s.elastic.co/v1`,
-`clusters.postgresql.cnpg.io/v1`, `postgresqls.acid.zalan.do/v1`, `mongodbcommunity.mongodbcommunity.mongodb.com/v1`,
-`redisclusters`/`redisreplications.redis.redis.opstreelabs.in/v1beta2`, `applications.argoproj.io/v1alpha1`.
-Pod ↔ CR label keys: Strimzi `strimzi.io/cluster` (+ `strimzi.io/kind=Kafka`, broker/controller roles),
-RabbitMQ operator `app.kubernetes.io/name=<cluster>`, OpenSearch operator `opster.io/opensearch-cluster`,
-ECK `elasticsearch.k8s.elastic.co/cluster-name`, CNPG `cnpg.io/cluster`, Zalando `cluster-name`.
-Status: Strimzi/CNPG/RabbitMQ `status.conditions` (`Ready`, `AllReplicasReady`, `ClusterAvailable`), ECK/OpenSearch
-`status.health` (green/yellow/red). Strimzi broker config lives in `spec.kafka.config`; resources in
-`spec.kafka.resources`; JVM heap in `spec.kafka.jvmOptions` (`-Xmx`). Strimzi pods are owned by `StrimziPodSet`.
+## Operators — verified against upstream source (Oct 2026)
+Checked in the operators' repositories (CRD manifests, label constants, status types). Re-check when an
+operator ships a new API version.
+
+| Operator | CRD (versions tried in order) | Pod ↔ CR label | Health signal |
+|---|---|---|---|
+| Strimzi | `kafkas`, `kafkanodepools.kafka.strimzi.io` (`v1`, then `v1beta2`) | `strimzi.io/cluster`, `strimzi.io/pool-name`, `strimzi.io/broker-role`/`controller-role` | `status.conditions[type=Ready]` |
+| RabbitMQ cluster operator | `rabbitmqclusters.rabbitmq.com/v1beta1` | `app.kubernetes.io/name=<cluster>` | conditions `AllReplicasReady`, `ClusterAvailable`, `ReconcileSuccess` |
+| OpenSearch operator | `opensearchclusters.opensearch.org/v1` (current), `opensearch.opster.io/v1` (deprecated, mirrored — deduplicated) | `opensearch.org/opensearch-cluster` (old: `opster.io/opensearch-cluster`) | `status.phase` RUNNING/PENDING, `status.health` |
+| ECK | `elasticsearches.elasticsearch.k8s.elastic.co/v1` | `elasticsearch.k8s.elastic.co/cluster-name` | `status.health`, `status.phase` Ready/ApplyingChanges/MigratingData/Stalled/Invalid |
+| CloudNativePG | `clusters.postgresql.cnpg.io/v1` | `cnpg.io/cluster`; role `cnpg.io/instanceRole` (`role` deprecated) | `status.phase` ("Cluster in healthy state"), conditions `Ready` |
+| Zalando | `postgresqls.acid.zalan.do/v1` | `cluster-name`, `spilo-role` | `status.PostgresClusterStatus` Running/Creating/Updating/*Failed/Invalid |
+| MongoDB community | `mongodbcommunity.mongodbcommunity.mongodb.com/v1` (repo deprecated, moved to mongodb/mongodb-kubernetes, same CRD) | `app` | `status.phase` Running/Pending/Failed |
+| OT Redis | `redisclusters`, `redisreplications.redis.redis.opstreelabs.in/v1beta2` | `app=<name>-leader`/`<name>-follower`, `redis_setup_type`, `role` | `status.state` Initializing/Bootstrap/Ready/Failed |
+
+Notes:
+- **Strimzi 1.0 removed `v1beta2`** and Strimzi ≥ 0.46 is KRaft-only: replicas, storage, resources and (optionally)
+  JVM options live in `KafkaNodePool` resources (`strimzi.io/cluster` label), not in `Kafka.spec.kafka`. Pods are
+  `<cluster>-<pool>-<nodeId>`, owned by `StrimziPodSet <cluster>-<pool>`; Services `<cluster>-kafka-bootstrap`,
+  `<cluster>-kafka-brokers`. Legacy `spec.kafka.replicas/resources/storage` is still read for old clusters.
+- Broker counts (for replication checks) exclude controller-only node pools.
+- RedisCluster members = leader replicas + follower replicas (each defaults to `clusterSize`).
+- Operator phases are split into *busy* (Creating, Updating, ApplyingChanges, Pending, Initializing… → medium,
+  "still reconciling") and *failed* (anything with fail/invalid/stalled/error → high).
 
 ## Data-system rules of thumb used by checks
 - JVM heap ≤ 75% of the container limit (Kafka); ≤ 50% for OpenSearch/Elasticsearch (page cache).

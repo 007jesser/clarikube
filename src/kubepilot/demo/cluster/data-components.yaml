@@ -1,12 +1,11 @@
 # Data tier for the demo: operator-managed and Helm-installed middleware with realistic problems.
-# ================================================================ Kafka (Strimzi): broker 2 can't get a volume
-apiVersion: kafka.strimzi.io/v1beta2
+# ================================================================ Kafka (Strimzi 1.x, KRaft node pools): broker 2 can't get a volume
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata: {name: events, namespace: data}
 spec:
   kafka:
-    version: 3.7.0
-    replicas: 3
+    version: 4.3.2
     listeners:
       - {name: plain, port: 9092, type: internal, tls: false}
       - {name: external, port: 9094, type: loadbalancer, tls: false}
@@ -14,35 +13,51 @@ spec:
       default.replication.factor: 3
       min.insync.replicas: 3
       offsets.topic.replication.factor: 3
-    storage: {type: persistent-claim, size: 20Gi, class: fast-ssd}
-    resources:
-      requests: {cpu: 500m, memory: 2Gi}
-      limits: {memory: 2Gi}
-    jvmOptions: {-Xms: 1024m, -Xmx: 1024m}
 status:
+  kafkaNodePools: [{name: broker}]
   conditions:
     - type: Ready
       status: "False"
       reason: TimeoutException
-      message: Exceeded timeout of 300000ms while waiting for Pods resource events-kafka-2 in namespace data to be ready
+      message: Exceeded timeout of 300000ms while waiting for Pods resource events-broker-2 in namespace data to be ready
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: data
+  labels: {strimzi.io/cluster: events}
+spec:
+  replicas: 3
+  roles: [controller, broker]
+  storage: {type: persistent-claim, size: 20Gi, class: fast-ssd}
+  resources:
+    requests: {cpu: 500m, memory: 2Gi}
+    limits: {memory: 2Gi}
+  jvmOptions: {-Xms: 1024m, -Xmx: 1024m}
+status:
+  replicas: 3
+  nodeIds: [0, 1, 2]
+  roles: [controller, broker]
 ---
 apiVersion: v1
 kind: Pod
 metadata:
-  name: events-kafka-0
+  name: events-broker-0
   namespace: data
   labels:
     strimzi.io/cluster: events
     strimzi.io/kind: Kafka
     strimzi.io/name: events-kafka
+    strimzi.io/pool-name: broker
     strimzi.io/broker-role: "true"
     strimzi.io/controller-role: "true"
-  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+  ownerReferences: [{apiVersion: core.strimzi.io/v1, kind: StrimziPodSet, name: events-broker, controller: true}]
 spec:
   nodeName: kind-worker
   containers:
     - name: kafka
-      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      image: quay.io/strimzi/kafka:1.4.0-kafka-4.3.2
       resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
       readinessProbe: {httpGet: {path: /v1/ready/, port: 8080}}
 status:
@@ -53,20 +68,21 @@ status:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: events-kafka-1
+  name: events-broker-1
   namespace: data
   labels:
     strimzi.io/cluster: events
     strimzi.io/kind: Kafka
     strimzi.io/name: events-kafka
+    strimzi.io/pool-name: broker
     strimzi.io/broker-role: "true"
     strimzi.io/controller-role: "true"
-  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+  ownerReferences: [{apiVersion: core.strimzi.io/v1, kind: StrimziPodSet, name: events-broker, controller: true}]
 spec:
   nodeName: kind-worker2
   containers:
     - name: kafka
-      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      image: quay.io/strimzi/kafka:1.4.0-kafka-4.3.2
       resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
       readinessProbe: {httpGet: {path: /v1/ready/, port: 8080}}
 status:
@@ -77,20 +93,22 @@ status:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: events-kafka-2
+  name: events-broker-2
   namespace: data
   labels:
     strimzi.io/cluster: events
     strimzi.io/kind: Kafka
     strimzi.io/name: events-kafka
+    strimzi.io/pool-name: broker
     strimzi.io/broker-role: "true"
     strimzi.io/controller-role: "true"
-  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+  ownerReferences: [{apiVersion: core.strimzi.io/v1, kind: StrimziPodSet, name: events-broker, controller: true}]
 spec:
   containers:
     - name: kafka
-      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      image: quay.io/strimzi/kafka:1.4.0-kafka-4.3.2
       resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
+      readinessProbe: {httpGet: {path: /v1/ready/, port: 8080}}
 status:
   phase: Pending
   conditions:
@@ -102,9 +120,9 @@ status:
 apiVersion: v1
 kind: List
 items:
-  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-0, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
-  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-1, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
-  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-2, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Pending}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-broker-0, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-broker-1, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-broker-2, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Pending}}
   - apiVersion: v1
     kind: Service
     metadata: {name: events-kafka-bootstrap, namespace: data}

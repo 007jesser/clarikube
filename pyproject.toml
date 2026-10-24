@@ -1,6 +1,6 @@
 [project]
 name = "kubepilot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model-agnostic MCP server for safe Kubernetes diagnosis, security triage and GitOps-based remediation"
 readme = "README.md"
 license = "Apache-2.0"
@@ -8,6 +8,16 @@ authors = [
     { name = "Jesser Sallemi", email = "jesser.sallemi18@gmail.com" }
 ]
 requires-python = ">=3.12"
+keywords = ["kubernetes", "mcp", "gitops", "sre", "ai", "falco", "trivy", "kafka", "devops"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: System :: Monitoring",
+]
 dependencies = [
     "kubernetes>=31.0",
     "mcp>=2.0,<3",
@@ -17,6 +27,11 @@ dependencies = [
     "starlette>=1.9.0",
     "uvicorn>=0.54.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/OWNER/kubepilot"
+Issues = "https://github.com/OWNER/kubepilot/issues"
+Changelog = "https://github.com/OWNER/kubepilot/blob/main/CHANGELOG.md"
 
 [project.scripts]
 kubepilot = "kubepilot.cli:main"

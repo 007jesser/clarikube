@@ -74,7 +74,7 @@ def test_diagnose_all_ranked_and_filtered(snap) -> None:  # type: ignore[no-unty
         "api",
         "orders",  # shop apps
         "search",
-        "events-kafka",  # data tier pods (OOMKilled OpenSearch, Kafka broker without a volume)
+        "events-broker",  # data tier pods (OOMKilled OpenSearch, Kafka broker without a volume)
     }
     assert all(f.severity >= Severity.MEDIUM for f in findings)
     hygiene = diagnose.diagnose_all(snap, include_hygiene=True, min_severity=Severity.LOW)

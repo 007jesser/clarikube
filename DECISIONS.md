@@ -30,3 +30,7 @@
 | 26 | `plan_revert` produces a normal plan, never a direct revert | Undo goes through the same diff, approval and audit as the original change. |
 | 27 | `verify_fix` compares file contents when the commit is not an ancestor | Squash and rebase merges rewrite commits; content equality is the reliable signal. Uses local refs only (no network fetch). |
 | 28 | Component analysis always uses a cluster-wide snapshot | Apps and their data systems usually live in different namespaces; a namespace-scoped view would miss the root cause. |
+| 29 | `kubepilot ask` uses the in-process MCP server and hides `commit_plan` | Same tool schemas as any MCP client; a local model can plan but never commit. Zero extra dependencies (urllib). |
+| 30 | `kubepilot commit` requires an interactive TTY | Gives users without an MCP client a commit path while keeping agents (which run shells without a TTY) out of it. |
+| 31 | Operator CRD versions are tried newest-first | Strimzi 1.0 removed `v1beta2`; older clusters only serve it. One code path supports both. |
+| 32 | Proposed memory limits are rounded up (128Mi / 512Mi steps) | `2731Mi` reads like a bug in a PR; humans write `3Gi`. |

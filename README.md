@@ -105,6 +105,16 @@ Then ask: *"Triage the cluster"* · *"Why is checkout failing? Prepare a fix."* 
 > kubepilot runs as a **local** MCP server (stdio). Use it from a client running on the same machine,
 > such as Claude Code or Claude Desktop's local MCP config. Cloud-hosted chat sessions can't reach it.
 
+### With a local model (no MCP client)
+
+```bash
+ollama pull qwen2.5:7b-instruct
+KUBEPILOT_SOURCE=fixture kubepilot ask "Why is shop/orders crashing?" --model qwen2.5:7b-instruct
+```
+
+Works with any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, llama.cpp, hosted APIs). The model can plan
+fixes but never commit them; you run `kubepilot commit <plan-id>` yourself. → [docs/LOCAL-MODELS.md](docs/LOCAL-MODELS.md)
+
 ### On your real cluster
 
 ```bash
@@ -199,6 +209,7 @@ Prompts: `triage_cluster`, `fix_workload`, `incident_response`.
 | `KUBEPILOT_APPROVAL_MODE` | `token` | `cli` additionally requires `kubepilot approve <id>` by a human |
 | `KUBEPILOT_PLAN_TTL_MINUTES` | `30` | plan expiry |
 | `KUBEPILOT_INGEST_TOKEN` | — | **required** bearer token for the Falco webhook |
+| `KUBEPILOT_LLM_MODEL`, `KUBEPILOT_LLM_BASE_URL`, `KUBEPILOT_LLM_API_KEY` | —, Ollama, — | for `kubepilot ask` |
 | `KUBEPILOT_READ_LOGS` | `false` (`true` in fixture mode) | read error signatures from failing containers' logs; needs the optional `kubepilot-logs` ClusterRole in `deploy/rbac.yaml` |
 
 ## CLI
@@ -209,7 +220,9 @@ kubepilot serve [--transport stdio|http]   MCP server (HTTP binds 127.0.0.1 by d
 kubepilot ingest                           Falcosidekick webhook receiver (needs KUBEPILOT_INGEST_TOKEN)
 kubepilot triage [ns] [--security]         JSON report
 kubepilot diagnose <ns> <name>
+kubepilot ask "<question>" [--model M]   agent loop with a local/OpenAI-compatible model
 kubepilot plans | show <id> | approve <id> | reject <id>
+kubepilot commit <id>                      human-only commit (interactive terminal required)
 kubepilot capture --out DIR [-n ns]        snapshot a cluster into a fixture (env values etc. redacted)
 ```
 
@@ -217,10 +230,10 @@ kubepilot capture --out DIR [-n ns]        snapshot a cluster into a fixture (en
 
 kubepilot is **alpha**. Known limits:
 - Helm: values are edited, chart templates never; a value the chart only sets by default must be set explicitly first. The rendered diff is checked by your CD tool, not by kubepilot's policy guard.
-- Operator CRD versions are listed in `source/crds.py`; operators not on the list are seen as plain StatefulSets. Strimzi KRaft node pools are read but sized from the `Kafka` resource.
+- Operator support (CRD versions, labels, status fields) was verified against the operators' source in Oct 2026 ([platform notes](docs/platform-notes.md)), not yet against every live operator version. Operators not on the list are seen as plain StatefulSets.
 - Data-system checks read Kubernetes state only (no client connections): topic-level settings, consumer lag and shard allocation details are out of scope.
 - Rollback compares image and resources only, not env/args/probes.
-- Tested end to end with Claude; smaller/local models are not benchmarked yet.
+- Tested end to end with Claude. `kubepilot ask` makes local models usable, but they are not benchmarked yet.
 - The Falco alert store is local SQLite (single replica).
 
 ## Roadmap

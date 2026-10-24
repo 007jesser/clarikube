@@ -51,7 +51,7 @@ rules:
   - apiGroups: [rabbitmq.com]
     resources: [rabbitmqclusters]
     verbs: [get, list, watch]
-  - apiGroups: [opensearch.opster.io]
+  - apiGroups: [opensearch.org, opensearch.opster.io]
     resources: [opensearchclusters]
     verbs: [get, list, watch]
   - apiGroups: [elasticsearch.k8s.elastic.co]
