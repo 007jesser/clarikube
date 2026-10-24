@@ -14,7 +14,7 @@ from typing import Any, cast
 
 from kubepilot.source.alerts import AlertStore
 from kubepilot.source.base import LOG_LIMIT_BYTES, LOG_TAIL_LINES, RawCluster, Snapshot
-from kubepilot.source.crds import OPERATOR_CRDS
+from kubepilot.source.crds import OPERATOR_CRDS, PLATFORM_IMAGES
 
 log = logging.getLogger(__name__)
 
@@ -220,7 +220,60 @@ class KubeSource:
                 "PodDisruptionBudget",
             ),
             custom_resources=self._operator_crs(ns),
+            ingresses=self._scoped(ns, net.list_ingress_for_all_namespaces, net.list_namespaced_ingress, "Ingress"),
+            ingress_classes=self._optional(lambda: self._list(net.list_ingress_class, "IngressClass")),
         )
+
+    def _optional(self, fn: Callable[[], list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        from kubernetes.client.exceptions import ApiException
+
+        try:
+            return fn()
+        except ApiException as e:
+            if e.status in (403, 404):
+                return []
+            raise
+
+    def _platform_config_maps(self, raw: RawCluster, warnings: list[str]) -> list[dict[str, Any]]:
+        """ConfigMaps mounted by (or passed via --configmap to) platform pods: Fluent Bit, ingress-nginx, Kong.
+
+        Fetched one by one by name, so nothing unrelated is read. Needs the optional `kubepilot-config` role."""
+        from kubernetes.client.exceptions import ApiException
+
+        wanted: set[tuple[str, str]] = set()
+        for p in raw.pods:
+            spec = p.get("spec") or {}
+            ns = (p.get("metadata") or {}).get("namespace", "default")
+            containers = spec.get("containers") or []
+            if not any(PLATFORM_IMAGES.search(str(c.get("image", ""))) for c in containers):
+                continue
+            for v in spec.get("volumes") or []:
+                if (v.get("configMap") or {}).get("name"):
+                    wanted.add((ns, v["configMap"]["name"]))
+            for c in containers:
+                for arg in [*(c.get("args") or []), *(c.get("command") or [])]:
+                    if str(arg).startswith("--configmap="):
+                        ref = str(arg).split("=", 1)[1].replace("$(POD_NAMESPACE)", ns)
+                        cns, _, cname = ref.rpartition("/")
+                        wanted.add((cns or ns, cname))
+        out: list[dict[str, Any]] = []
+        for ns, name in sorted(wanted)[:50]:
+            try:
+                cm = self._core.read_namespaced_config_map(name, ns)
+            except ApiException as e:
+                if e.status == 403:
+                    warnings.append(
+                        "Cannot read platform ConfigMaps (Fluent Bit / ingress-nginx config checks skipped); "
+                        "apply the optional kubepilot-config ClusterRole in deploy/rbac.yaml"
+                    )
+                    return out
+                if e.status == 404:
+                    continue
+                raise
+            d = self._api.sanitize_for_serialization(cm)
+            d["kind"] = "ConfigMap"
+            out.append(d)
+        return out
 
     def snapshot(self, namespace: str | None = None) -> Snapshot:
         cached = self._cache.get(namespace)
@@ -228,6 +281,7 @@ class KubeSource:
             return cached[1]
         warnings: list[str] = list(self.privilege_warnings())
         raw = self._fetch_raw(namespace, warnings)
+        raw.config_maps = self._platform_config_maps(raw, warnings)
         now = datetime.now(UTC)
         falco = []
         if self._alerts:
@@ -262,6 +316,7 @@ class KubeSource:
         """Used by ``kubepilot capture`` to write a fixture directory from a live cluster."""
         warnings: list[str] = []
         raw = self._fetch_raw(namespace, warnings)
+        raw.config_maps = self._platform_config_maps(raw, warnings)
         for w in warnings:
             log.warning(w)
         return raw

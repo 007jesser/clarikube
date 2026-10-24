@@ -7,6 +7,8 @@ upstream sources in Oct 2026 (see docs/platform-notes.md).
 
 from __future__ import annotations
 
+import re
+
 OPERATOR_CRDS: list[tuple[str, tuple[str, ...], str, str]] = [
     # Strimzi 1.0 removed v1beta2; older installs only serve v1beta2.
     ("kafka.strimzi.io", ("v1", "v1beta2"), "kafkas", "Kafka"),
@@ -22,6 +24,15 @@ OPERATOR_CRDS: list[tuple[str, tuple[str, ...], str, str]] = [
     ("redis.redis.opstreelabs.in", ("v1beta2",), "redisclusters", "RedisCluster"),
     ("redis.redis.opstreelabs.in", ("v1beta2",), "redisreplications", "RedisReplication"),
     ("argoproj.io", ("v1alpha1",), "applications", "Application"),
+    ("cert-manager.io", ("v1",), "certificates", "Certificate"),
+    ("configuration.konghq.com", ("v1",), "kongplugins", "KongPlugin"),
+    ("configuration.konghq.com", ("v1",), "kongclusterplugins", "KongClusterPlugin"),
 ]
 
 CR_GROUPS = {g for g, _, _, _ in OPERATOR_CRDS}
+
+# Pods whose ConfigMaps kubepilot reads (config of platform components it checks). Nothing else is fetched.
+
+PLATFORM_IMAGES = re.compile(
+    r"fluent-bit|fluentbit|fluentd|timberio/vector|/vector:|ingress-nginx/controller|kong", re.I
+)

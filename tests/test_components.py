@@ -50,7 +50,7 @@ def test_classify_image(image: str, kind: str | None) -> None:
 
 
 def test_detects_operator_and_plain_components(snap: Snapshot) -> None:
-    found = comps(snap)
+    found = {k: c for k, c in comps(snap).items() if c.layer == "data"}
     assert set(found) == {
         "kafka/data/events",
         "opensearch/data/search",

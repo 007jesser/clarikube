@@ -12,7 +12,7 @@
 | Spoofed or flooding Falco alerts | Ingest **requires** a bearer token (constant-time compare) unless explicitly disabled for labs; 256 KB body cap enforced on Content-Length and while streaming; NetworkPolicy admits only the `falco` namespace in-cluster. |
 | Exposed MCP endpoint | HTTP transport binds 127.0.0.1 by default with the MCP SDK's DNS-rebinding protection; in-cluster it is reached only via port-forward. |
 | Over-privileged credentials | kubepilot only reads, but locally it uses whatever kubeconfig it is given. On start it runs SelfSubjectAccessReviews and surfaces a warning if it can read Secrets, create pods, exec or delete workloads. |
-| Secrets in env vars | Env values are parsed in memory to find dependencies (e.g. `REDIS_URL`) but never returned; only the env var name and the Service name appear in output. `kubepilot capture` redacts env values. |
+| Secrets in env vars and ConfigMaps | Env values and platform ConfigMaps (Fluent Bit, ingress-nginx; fetched by name with an optional role) are parsed in memory to find dependencies (e.g. `REDIS_URL`) but never returned; only names (env var, option, Service) appear in output. `kubepilot capture` redacts env values. |
 | Malicious hooks in the GitOps repo | kubepilot runs git with `core.hooksPath=/dev/null` and `--no-verify`, so no repo hook executes during planning or commit. |
 | Leaking data via bug reports | `kubepilot capture` never reads Secrets and redacts env values, secret-looking args/annotations, `last-applied-configuration` and managedFields. |
 

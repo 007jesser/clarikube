@@ -1,5 +1,5 @@
 # Minimal READ-ONLY access for kubepilot.
-# - no Secrets, no pods/exec, no pods/log, no write verbs anywhere
+# - no Secrets, no pods/exec, no write verbs anywhere; pods/log and configmaps only in optional roles below
 # - RBAC objects are listed only to compute ServiceAccount exposure
 apiVersion: v1
 kind: Namespace
@@ -33,7 +33,7 @@ rules:
     resources: [jobs, cronjobs]
     verbs: [get, list, watch]
   - apiGroups: [networking.k8s.io]
-    resources: [networkpolicies]
+    resources: [networkpolicies, ingresses, ingressclasses]
     verbs: [get, list, watch]
   - apiGroups: [rbac.authorization.k8s.io]
     resources: [roles, rolebindings, clusterroles, clusterrolebindings]
@@ -72,6 +72,12 @@ rules:
   - apiGroups: [argoproj.io]
     resources: [applications]
     verbs: [get, list, watch]
+  - apiGroups: [cert-manager.io]
+    resources: [certificates]
+    verbs: [get, list, watch]
+  - apiGroups: [configuration.konghq.com]
+    resources: [kongplugins, kongclusterplugins]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -105,6 +111,31 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: kubepilot-logs
+subjects:
+  - kind: ServiceAccount
+    name: kubepilot
+    namespace: kubepilot
+---
+# OPTIONAL: lets kubepilot read the ConfigMaps of the platform components it checks (Fluent Bit outputs and
+# buffers, ingress-nginx/ModSecurity settings). kubepilot only GETs ConfigMaps mounted by those pods, parses
+# them in memory and never returns their contents (they can embed credentials).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubepilot-config
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubepilot-config
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubepilot-config
 subjects:
   - kind: ServiceAccount
     name: kubepilot

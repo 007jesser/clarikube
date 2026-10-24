@@ -1,7 +1,11 @@
 # Changelog
 
 ## 0.2.0 (unreleased)
-Data systems and the full fix lifecycle.
+Every layer around the apps, data systems and the full fix lifecycle.
+- Edge: ingress-nginx (IngressNightmare versions → upgrade PR, retirement, snippet annotations, ModSecurity DetectionOnly → blocking PR, CRS, per-Ingress WAF bypass, outage impact) and Kong (exposed Admin API → ClusterIP PR, plain admin listener, missing KongPlugins, per-pod rate limits).
+- Log pipeline: Fluent Bit (node coverage → toleration PR, Retry_Limit/Mem_Buf_Limit → config PR, TLS, inline credentials, undeliverable destination), Fluentd/Vector coverage. Config parsed from ConfigMaps, never returned.
+- Routing (Ingress → missing/unready backends, linked to the broken workload) and cert-manager certificates (expired, expiring, renewal failing).
+- Multi-edit plans: several fixes in the same file merge into one diff.
 - Component detection: Kafka (Strimzi), RabbitMQ (operator), OpenSearch/Elasticsearch (operator, ECK), Redis, PostgreSQL (CloudNativePG, Zalando), MongoDB, plus Helm-installed and plain StatefulSets.
 - ~25 deterministic component checks: quorum, Kafka replication and min.insync, JVM heap vs limit, PVC state, PDB, spread, auth disabled, external exposure, operator status.
 - Dependency graph from env values (values never output) and "Likely root cause" findings that blame the broken dependency, ranked by log evidence.

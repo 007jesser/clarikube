@@ -4,7 +4,7 @@
 ![status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-**An AI ops layer for Kubernetes: it diagnoses failures, triages security signals, and proposes fixes as Git branches/PRs. It never changes the cluster itself.**
+**An AI ops layer for Kubernetes: it diagnoses failures across every layer (edge, apps, data, logging, TLS), triages security signals, and proposes fixes as Git branches/PRs. It never changes the cluster itself.**
 
 kubepilot is an [MCP](https://modelcontextprotocol.io) server, so it works with any MCP client (Claude Code, Claude Desktop, other agents). The analysis — root cause, signal correlation, risk scoring, policy checks — is deterministic, tested code in the server; the model only explains and asks you to approve.
 
@@ -36,13 +36,24 @@ AI:  checkout is OOMKilled (10 restarts). Revision 2, rolled out at 21:28, lower
 | Model | Usually one vendor | **Any MCP client**; the logic lives in the server |
 | Guardrails | Prompting | Policy guard, plan expiry, stale-plan detection, approval token, optional human CLI approval, dry-run by default |
 | Prompt injection | Ignored | All cluster text is sanitized and injection attempts are **flagged** as data |
-| Data systems | Treated like any pod | **Knows Kafka, RabbitMQ, OpenSearch/Elasticsearch, Redis, PostgreSQL, MongoDB**: quorum, replication, JVM heap, storage, auth, exposure — and traces an app's failure to the broken dependency |
+| Layers | Pods only | **Edge** (ingress-nginx + ModSecurity, Kong), **data** (Kafka, RabbitMQ, OpenSearch/Elasticsearch, Redis, PostgreSQL, MongoDB), **log pipeline** (Fluent Bit, Fluentd, Vector), **routing and TLS** — and it traces a failure across them to the real cause |
 
-## It understands what runs in your cluster
+## It understands every layer, not just pods
 
-Real clusters are mostly data systems and the apps that depend on them. kubepilot detects them — from
-operator resources (Strimzi, RabbitMQ operator, OpenSearch operator, ECK, CloudNativePG, Zalando,
-MongoDB community, OT Redis), Helm releases or plain StatefulSets — and checks what actually breaks them:
+An app rarely fails alone. kubepilot models the layers around it and follows failures across them:
+
+```
+ users ──► edge (ingress-nginx + ModSecurity, Kong) ──► Ingress ──► Service ──► app pods
+                                                                              │
+                         log pipeline (Fluent Bit / Fluentd / Vector) ◄───────┤
+                                         │                                    ▼
+                                         └──────────► data (Kafka, RabbitMQ, OpenSearch, Redis, Postgres, Mongo)
+                                                      + TLS certificates (cert-manager)
+```
+
+It detects each component from operator resources (Strimzi, RabbitMQ operator, OpenSearch operator, ECK,
+CloudNativePG, Zalando, MongoDB community, OT Redis), Helm releases, plain StatefulSets/Deployments/DaemonSets
+and container images — and checks what actually breaks them:
 
 ```
 You:  "Why is orders crashing?"
@@ -72,10 +83,15 @@ AI:  orders is not the problem. It writes to Kafka data/events (env KAFKA_BOOTST
 | Redis | no password / protected mode off |
 | PostgreSQL | `trust` auth, multi-replica *Deployment* (split brain) |
 | MongoDB | auth disabled |
+| **ingress-nginx** | IngressNightmare-vulnerable version (CVE-2025-1974) → upgrade PR · project retired (no fixes after March 2026) · `allow-snippet-annotations` on · **ModSecurity** in DetectionOnly (not blocking) → blocking PR · CRS not loaded · WAF disabled per Ingress · controller down = which hosts are unreachable |
+| **Kong** | Admin API / Kong Manager exposed (LoadBalancer/NodePort) → ClusterIP PR · Admin API on 0.0.0.0 without TLS or NetworkPolicy · route references a missing KongPlugin (auth not applied) · `local` rate limits multiplied by replica count |
+| **Fluent Bit** (Fluentd, Vector: coverage) | nodes without a log agent (untolerated taints) → toleration PR · `Retry_Limit` default 1 drops logs → PR · no `Mem_Buf_Limit` → PR · logs leaving the cluster without TLS · credentials inline in the ConfigMap · **destination unhealthy → logs not delivered** |
+| **Routing** | Ingress → missing Service · Ingress → Service with no ready pods (users get 503), linked to the broken workload |
+| **Certificates** (cert-manager) | expired · expiring within 7 days (renewal failing, with the ACME error) · not ready |
 
-Connections between apps and data systems are inferred from env var values that point at a Service
-(`redis://cache.data:6379`, `kafka-0.kafka-brokers:9092`, …). Values are parsed in memory and **never
-returned** (they often embed passwords); only the env var name and Service name are shown.
+Connections are inferred from env var values that point at a Service (`redis://cache.data:6379`,
+`kafka-0.kafka-brokers:9092`, …), from log agent outputs, and from Ingress backends. Env values and ConfigMap
+contents are parsed in memory and **never returned** (they often embed passwords); only names are shown.
 
 ## Try it in 1 minute (no cluster needed)
 
@@ -169,7 +185,7 @@ flowchart LR
 
 **Root cause across dependencies:** when an app fails and a data system it uses is unhealthy, the first finding says so ("Likely root cause: Kafka data/events is unhealthy"). With `KUBEPILOT_READ_LOGS=true` kubepilot also reads the last 200 lines of *failing* containers and extracts known error signatures (OOM, NotEnoughReplicas, connection refused, DNS, auth, disk full, …) to pick the right dependency. Logs are untrusted: only a signature and one sanitized line are returned, never the log.
 
-**Automated fixes (as Git changes):** `set-memory-limit` · `set-memory-request` · `set-image` · `rollback-template` · `harden-security-context` · `restrict-ingress` (scoped to known client namespaces) · `isolate-workload` · `add-pdb` · `make-service-internal` · `set-kafka-config`. They edit plain manifests, Kustomize bases, **operator custom resources** (Kafka, RabbitmqCluster, CNPG Cluster, …) and **Helm values** (Argo CD `valuesObject`/`valueFiles`, Flux `HelmRelease.spec.values`, `<release>/values*.yaml`) — a Helm value is changed only where its current content matches what is live, otherwise kubepilot refuses. Edits keep comments and formatting; new files are registered in `kustomization.yaml`. Everything else (rotate credentials, enable auth, rebuild an image, reduce RBAC, create a missing Secret) is returned as guidance for a human.
+**Automated fixes (as Git changes):** `set-memory-limit` · `set-memory-request` · `set-image` · `rollback-template` · `harden-security-context` · `restrict-ingress` (scoped to known client namespaces) · `isolate-workload` · `add-pdb` · `make-service-internal` · `set-kafka-config` · `set-modsecurity-blocking` · `set-fluentbit-option` · `add-toleration`. Several fixes to the same file land in one coherent change. They edit plain manifests, Kustomize bases, **operator custom resources** (Kafka, RabbitmqCluster, CNPG Cluster, …) and **Helm values** (Argo CD `valuesObject`/`valueFiles`, Flux `HelmRelease.spec.values`, `<release>/values*.yaml`) — a Helm value is changed only where its current content matches what is live, otherwise kubepilot refuses. Edits keep comments and formatting; new files are registered in `kustomization.yaml`. Everything else (rotate credentials, enable auth, rebuild an image, reduce RBAC, create a missing Secret) is returned as guidance for a human.
 
 **After the merge:** `verify_fix` checks the plan's commit reached the base branch (also after squash merges), reads Argo CD sync/health, and confirms the targeted findings are gone. `plan_revert` creates a reviewed revert plan when a change made things worse.
 
@@ -177,11 +193,11 @@ flowchart LR
 
 | Tool | Type | Purpose |
 |---|---|---|
-| `cluster_health` | read | Start here: broken workloads, high-risk incidents, nodes |
+| `cluster_health` | read | Start here: broken workloads, high-risk incidents, components per layer, routing & TLS, nodes |
 | `find_problems` | read | All findings above a severity |
 | `diagnose_workload` | read | Root cause (incl. broken dependencies and log signatures) + rollout diff + fix options |
-| `list_components` | read | Data systems: kind, operator/Helm/manifests, members ready, status, clients |
-| `diagnose_component` | read | Kafka/RabbitMQ/OpenSearch/Redis/PostgreSQL/... checks with evidence and fixes |
+| `list_components` | read | Components by layer (edge, data, logging): how managed, members ready, status, clients |
+| `diagnose_component` | read | Checks with evidence and fixes for one component; routes for edge, destinations for log agents |
 | `security_triage` | read | Ranked, correlated security incidents |
 | `investigate_security` | read | RBAC, NetworkPolicy, security context, CVEs for one workload |
 | `recent_events` | read | Warning events, sanitized |
@@ -231,13 +247,14 @@ kubepilot capture --out DIR [-n ns]        snapshot a cluster into a fixture (en
 kubepilot is **alpha**. Known limits:
 - Helm: values are edited, chart templates never; a value the chart only sets by default must be set explicitly first. The rendered diff is checked by your CD tool, not by kubepilot's policy guard.
 - Operator support (CRD versions, labels, status fields) was verified against the operators' source in Oct 2026 ([platform notes](docs/platform-notes.md)), not yet against every live operator version. Operators not on the list are seen as plain StatefulSets.
-- Data-system checks read Kubernetes state only (no client connections): topic-level settings, consumer lag and shard allocation details are out of scope.
+- Checks read Kubernetes state only (no client connections): topic-level settings, consumer lag, shard allocation and live WAF/gateway metrics are out of scope.
+- Edge: ingress-nginx and Kong today. Gateway API (HTTPRoute), Traefik, Envoy Gateway, Istio and NGINX Inc.'s controller are next. Fluent Bit YAML configs are checked but only classic `.conf` is edited automatically; Fluent Operator CRDs are not read yet.
 - Rollback compares image and resources only, not env/args/probes.
 - Tested end to end with Claude. `kubepilot ask` makes local models usable, but they are not benchmarked yet.
 - The Falco alert store is local SQLite (single replica).
 
 ## Roadmap
-Flux Kustomization/HelmRelease status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
+Gateway API / Traefik / Envoy Gateway / Istio · Prometheus & Loki pipelines · Flux status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
 
 ## Contributing & security
 Issues and PRs welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately, per [SECURITY.md](SECURITY.md).

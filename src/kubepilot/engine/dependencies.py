@@ -13,7 +13,8 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-from kubepilot.engine.components import Component
+from kubepilot.engine import layers
+from kubepilot.engine.components import Component, status_of
 from kubepilot.engine.logsig import LogSignal
 from kubepilot.models import Evidence, Finding, Pod, RemediationHint, ServiceInfo, Severity, WorkloadRef
 from kubepilot.source.base import Snapshot
@@ -108,7 +109,57 @@ def build(snap: Snapshot, components: list[Component]) -> list[Edge]:
                         continue
                     key = (p.workload.key, hit.key, target.name)
                     edges.setdefault(key, Edge(p.workload, hit.key, hit.label, target.name, e.name))
+    # Platform components wired by config instead of env: log agents -> their outputs.
+    for comp in components:
+        for host, plugin in layers.logging_hosts(snap, comp):
+            target = _resolve(host, comp.namespace, snap.services)
+            hit = by_service.get((target.namespace, target.name)) if target else None
+            if hit is None or target is None or hit is comp:
+                continue
+            key = (comp.ref.key, hit.key, target.name)
+            edges.setdefault(key, Edge(comp.ref, hit.key, hit.label, target.name, f"output:{plugin}"))
     return sorted(edges.values(), key=lambda e: (e.client.key, e.component))
+
+
+def pipeline_findings(
+    comp: Component, edges: list[Edge], component_findings: dict[str, list[Finding]]
+) -> list[Finding]:
+    """A log agent whose destination is unhealthy is losing or buffering logs, even if the agent looks fine."""
+    out: list[Finding] = []
+    for e in edges:
+        if e.client != comp.ref or not e.env_var.startswith("output:"):
+            continue
+        fs = component_findings.get(e.component, [])
+        status = status_of(fs)
+        if status not in ("down", "critical", "degraded"):
+            continue
+        sev = Severity.HIGH if status in ("down", "critical") else Severity.MEDIUM
+        fid = hashlib.sha1(f"{comp.key}|pipeline|{e.component}".encode(), usedforsecurity=False).hexdigest()[:10]
+        top = [f.title for f in fs if f.category == "reliability"][:2]
+        out.append(
+            Finding(
+                id=fid,
+                workload=comp.ref,
+                component=comp.label,
+                category="reliability",
+                title=f"{comp.label}: logs are not being delivered to {e.component_label} ({status})",
+                severity=sev,
+                explanation=f"{comp.label} ships logs to {e.component_label} via Service {e.service} "
+                f"({e.env_var.split(':', 1)[1]} output), which is {status}: "
+                + "; ".join(top)
+                + ". Logs are buffered and, once retries or buffers run out, dropped. Fix the destination first.",
+                evidence=[Evidence(source="dependency", detail=f"output {e.env_var.split(':', 1)[1]} -> {e.service}")]
+                + [Evidence(source="component", detail=t) for t in top],
+                remediations=[
+                    RemediationHint(
+                        kind="investigate-component",
+                        params={"component": e.component},
+                        summary=f"Run diagnose_component on {e.component_label}",
+                    )
+                ],
+            )
+        )
+    return out
 
 
 def clients_of(edges: list[Edge], component_key: str) -> list[Edge]:

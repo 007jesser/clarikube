@@ -1,0 +1,322 @@
+# Platform layers around the apps: edge (ingress-nginx + ModSecurity, Kong), logging (Fluent Bit), routing, TLS.
+# ================================================================ ingress-nginx: old (IngressNightmare), snippets on, WAF detect-only
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx, app.kubernetes.io/component: controller}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/component: controller}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx, app.kubernetes.io/component: controller}}
+    spec:
+      containers:
+        - name: controller
+          image: registry.k8s.io/ingress-nginx/controller:v1.11.3@sha256:d56f135b6462cfc476447cfe564b83a45e8bb7da2774963b00d12161112270b7
+          args: [/nginx-ingress-controller, --configmap=$(POD_NAMESPACE)/ingress-nginx-controller, --ingress-class=nginx, --validating-webhook=:8443]
+          ports: [{containerPort: 80}, {containerPort: 443}, {containerPort: 8443}]
+          resources: {requests: {cpu: 100m, memory: 90Mi}, limits: {memory: 512Mi}}
+status: {replicas: 1, readyReplicas: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ingress-nginx-controller-6b7f5d9c4-x2v8q
+  namespace: ingress-nginx
+  labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx, app.kubernetes.io/component: controller, pod-template-hash: 6b7f5d9c4}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: ingress-nginx-controller-6b7f5d9c4, controller: true}]
+spec:
+  nodeName: kind-worker
+  containers:
+    - name: controller
+      image: registry.k8s.io/ingress-nginx/controller:v1.11.3@sha256:d56f135b6462cfc476447cfe564b83a45e8bb7da2774963b00d12161112270b7
+      args: [/nginx-ingress-controller, --configmap=$(POD_NAMESPACE)/ingress-nginx-controller, --ingress-class=nginx, --validating-webhook=:8443]
+      resources: {requests: {cpu: 100m, memory: 90Mi}, limits: {memory: 512Mi}}
+  volumes:
+    - {name: webhook-cert, secret: {secretName: ingress-nginx-admission}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: controller, ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-01T10:00:00Z"}}}
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: ingress-nginx-controller-6b7f5d9c4
+  namespace: ingress-nginx
+  annotations: {deployment.kubernetes.io/revision: "1"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: ingress-nginx-controller, controller: true}]
+spec:
+  template:
+    spec:
+      containers:
+        - {name: controller, image: "registry.k8s.io/ingress-nginx/controller:v1.11.3"}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: ingress-nginx-controller, namespace: ingress-nginx}
+data:
+  allow-snippet-annotations: "true"
+  enable-modsecurity: "true"
+  enable-owasp-modsecurity-crs: "true"
+  use-forwarded-headers: "true"
+---
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: ingress-nginx-controller, namespace: ingress-nginx}
+    spec: {type: LoadBalancer, selector: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/component: controller}, ports: [{name: http, port: 80}, {name: https, port: 443}]}
+  - apiVersion: networking.k8s.io/v1
+    kind: IngressClass
+    metadata:
+      name: nginx
+      annotations: {ingressclass.kubernetes.io/is-default-class: "true"}
+    spec: {controller: k8s.io/ingress-nginx}
+  - apiVersion: networking.k8s.io/v1
+    kind: IngressClass
+    metadata: {name: kong}
+    spec: {controller: ingress-controllers.konghq.com/kong}
+---
+# ================================================================ Kong: admin API on a NodePort, local rate limit with 2 pods
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  namespace: kong
+  labels: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong}}
+    spec:
+      containers:
+        - name: proxy
+          image: kong:3.9
+          env:
+            - {name: KONG_DATABASE, value: "off"}
+            - {name: KONG_ADMIN_LISTEN, value: "0.0.0.0:8001, 0.0.0.0:8444 ssl"}
+            - {name: KONG_PROXY_LISTEN, value: "0.0.0.0:8000, 0.0.0.0:8443 ssl"}
+          ports: [{containerPort: 8000}, {containerPort: 8443}, {containerPort: 8001}, {containerPort: 8444}]
+          resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {memory: 1Gi}}
+status: {replicas: 2, readyReplicas: 2}
+---
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: kong-gateway-5f6c7d8b9-abcd1
+      namespace: kong
+      labels: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong, pod-template-hash: 5f6c7d8b9}
+      ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: kong-gateway-5f6c7d8b9, controller: true}]
+    spec:
+      nodeName: kind-worker
+      containers:
+        - name: proxy
+          image: kong:3.9
+          env:
+            - {name: KONG_DATABASE, value: "off"}
+            - {name: KONG_ADMIN_LISTEN, value: "0.0.0.0:8001, 0.0.0.0:8444 ssl"}
+          resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {memory: 1Gi}}
+    status:
+      phase: Running
+      containerStatuses: [{name: proxy, ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-10T10:00:00Z"}}}]
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: kong-gateway-5f6c7d8b9-efgh2
+      namespace: kong
+      labels: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong, pod-template-hash: 5f6c7d8b9}
+      ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: kong-gateway-5f6c7d8b9, controller: true}]
+    spec:
+      nodeName: kind-worker2
+      containers:
+        - name: proxy
+          image: kong:3.9
+          env:
+            - {name: KONG_DATABASE, value: "off"}
+            - {name: KONG_ADMIN_LISTEN, value: "0.0.0.0:8001, 0.0.0.0:8444 ssl"}
+          resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {memory: 1Gi}}
+    status:
+      phase: Running
+      containerStatuses: [{name: proxy, ready: true, restartCount: 0, state: {running: {startedAt: "2026-09-10T10:00:00Z"}}}]
+  - apiVersion: apps/v1
+    kind: ReplicaSet
+    metadata:
+      name: kong-gateway-5f6c7d8b9
+      namespace: kong
+      annotations: {deployment.kubernetes.io/revision: "1"}
+      ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: kong-gateway, controller: true}]
+    spec: {template: {spec: {containers: [{name: proxy, image: "kong:3.9"}]}}}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: kong-proxy, namespace: kong}
+    spec: {type: LoadBalancer, selector: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong}, ports: [{name: kong-proxy, port: 80, targetPort: "8000"}, {name: kong-proxy-tls, port: 443, targetPort: "8443"}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: kong-admin, namespace: kong}
+    spec: {type: NodePort, selector: {app.kubernetes.io/name: kong, app.kubernetes.io/instance: kong}, ports: [{name: kong-admin, port: 8001, targetPort: "8001", nodePort: 32001}]}
+  - apiVersion: configuration.konghq.com/v1
+    kind: KongPlugin
+    metadata: {name: rate-limit, namespace: shop}
+    plugin: rate-limiting
+    config: {minute: 100}
+---
+# ================================================================ Fluent Bit: ships to OpenSearch (down), drops after 1 retry, misses the control plane
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: logging
+  labels: {app.kubernetes.io/name: fluent-bit, app.kubernetes.io/instance: fluent-bit}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: fluent-bit}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: fluent-bit, app.kubernetes.io/instance: fluent-bit}}
+    spec:
+      containers:
+        - name: fluent-bit
+          image: cr.fluentbit.io/fluent/fluent-bit:3.2.2
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 128Mi}}
+      volumes:
+        - {name: config, configMap: {name: fluent-bit}}
+        - {name: varlog, hostPath: {path: /var/log}}
+status: {desiredNumberScheduled: 2, numberReady: 2}
+---
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: fluent-bit-7xk2p
+      namespace: logging
+      labels: {app.kubernetes.io/name: fluent-bit, app.kubernetes.io/instance: fluent-bit}
+      ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: fluent-bit, controller: true}]
+    spec:
+      nodeName: kind-worker
+      containers:
+        - {name: fluent-bit, image: "cr.fluentbit.io/fluent/fluent-bit:3.2.2", resources: {limits: {memory: 128Mi}}}
+      volumes:
+        - {name: config, configMap: {name: fluent-bit}}
+        - {name: varlog, hostPath: {path: /var/log}}
+    status:
+      phase: Running
+      containerStatuses: [{name: fluent-bit, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-01T10:00:00Z"}}}]
+  - apiVersion: v1
+    kind: Pod
+    metadata:
+      name: fluent-bit-9qm4z
+      namespace: logging
+      labels: {app.kubernetes.io/name: fluent-bit, app.kubernetes.io/instance: fluent-bit}
+      ownerReferences: [{apiVersion: apps/v1, kind: DaemonSet, name: fluent-bit, controller: true}]
+    spec:
+      nodeName: kind-worker2
+      containers:
+        - {name: fluent-bit, image: "cr.fluentbit.io/fluent/fluent-bit:3.2.2", resources: {limits: {memory: 128Mi}}}
+      volumes:
+        - {name: config, configMap: {name: fluent-bit}}
+        - {name: varlog, hostPath: {path: /var/log}}
+    status:
+      phase: Running
+      containerStatuses: [{name: fluent-bit, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-01T10:00:00Z"}}}]
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata: {name: fluent-bit, namespace: logging}
+    data:
+      fluent-bit.conf: |
+        [SERVICE]
+            Flush         5
+            Log_Level     info
+            Parsers_File  parsers.conf
+
+        @INCLUDE input-kubernetes.conf
+        @INCLUDE output.conf
+      input-kubernetes.conf: |
+        [INPUT]
+            Name              tail
+            Tag               kube.*
+            Path              /var/log/containers/*.log
+            multiline.parser  docker, cri
+      output.conf: |
+        [OUTPUT]
+            Name            opensearch
+            Match           kube.*
+            Host            search.data.svc.cluster.local
+            Port            9200
+            HTTP_User       logs
+            HTTP_Passwd     DEMO-not-a-real-password
+            Suppress_Type_Name On
+
+        [OUTPUT]
+            Name            http
+            Match           kube.*
+            Host            ingest.logs-saas.example.com
+            Port            80
+            URI             /v1/logs
+      parsers.conf: |
+        [PARSER]
+            Name   json
+            Format json
+---
+# ================================================================ Routing and TLS for the shop
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: frontend, namespace: shop}
+    spec: {type: ClusterIP, selector: {app: frontend}, ports: [{name: http, port: 80}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: orders, namespace: shop}
+    spec: {type: ClusterIP, selector: {app: orders}, ports: [{name: http, port: 8080}]}
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: storefront
+      namespace: shop
+      annotations:
+        nginx.ingress.kubernetes.io/enable-modsecurity: "false"
+    spec:
+      ingressClassName: nginx
+      tls: [{hosts: [shop.example.com], secretName: shop-tls}]
+      rules:
+        - host: shop.example.com
+          http:
+            paths:
+              - {path: /, pathType: Prefix, backend: {service: {name: frontend, port: {number: 80}}}}
+              - {path: /checkout, pathType: Prefix, backend: {service: {name: checkout-svc, port: {number: 8080}}}}
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: orders-api
+      namespace: shop
+      annotations:
+        konghq.com/plugins: rate-limit, key-auth
+    spec:
+      ingressClassName: kong
+      rules:
+        - host: api.example.com
+          http:
+            paths:
+              - {path: /orders, pathType: Prefix, backend: {service: {name: orders, port: {number: 8080}}}}
+  - apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata: {name: shop-tls, namespace: shop}
+    spec:
+      secretName: shop-tls
+      dnsNames: [shop.example.com]
+      issuerRef: {name: letsencrypt, kind: ClusterIssuer}
+    status:
+      notAfter: "2026-10-26T08:00:00Z"
+      renewalTime: "2026-09-26T08:00:00Z"
+      conditions:
+        - {type: Ready, status: "True", reason: Ready, message: Certificate is up to date and has not expired}
+        - {type: Issuing, status: "True", reason: Failed, message: "The certificate request has failed to complete and will be retried: Failed to wait for order resource \"shop-tls-1-2735\" to become ready: order is in \"errored\" state: Failed to finalize Order: 429 urn:ietf:params:acme:error:rateLimited"}

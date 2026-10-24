@@ -7,13 +7,16 @@ never creates secrets, rotates credentials or edits RBAC on its own.
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.scalarstring import LiteralScalarString
 
 from kubepilot import quantity
+from kubepilot.engine import fluentbit
 from kubepilot.gitops import helm
 from kubepilot.gitops import manifests as mf
 from kubepilot.models import RemediationHint, WorkloadRef
@@ -27,6 +30,9 @@ FIELD_KINDS = {
     "rollback-template",
     "harden-security-context",
     "set-kafka-config",
+    "set-modsecurity-blocking",
+    "set-fluentbit-option",
+    "add-toleration",
 }
 NEW_FILE_KINDS = {"restrict-ingress", "isolate-workload", "add-pdb"}
 SERVICE_KINDS = {"make-service-internal"}
@@ -246,25 +252,54 @@ def _helm_release(snap: Snapshot, wl: WorkloadRef) -> str | None:
 
 
 class _Edit:
-    """One opened file being edited, plus the policy baseline of the edited document."""
+    """One document being edited inside a (shared) opened file."""
 
-    def __init__(self, repo: Path, rel: Path, index: int) -> None:
-        self.ef = mf.EditableFile(repo, rel)
+    def __init__(self, ef: mf.EditableFile, index: int) -> None:
+        self.ef = ef
         self.index = index
-        self.doc: CommentedMap = self.ef.docs[index]
+        self.doc: CommentedMap = ef.docs[index]
         self.before_plain = mf.to_plain(self.doc)
 
-    def change(self, check_policy: bool = True) -> FileChange | None:
-        after = self.ef.render()
-        if after == self.ef.original:
-            return None
-        policy = compare(self.before_plain, mf.to_plain(self.doc)) if check_policy else []
-        return FileChange(path=str(self.ef.rel), before=self.ef.original, after=after, policy=policy)
+
+class _Workspace:
+    """Every file a plan touches is opened once, so several fixes in the same file end up in one change."""
+
+    def __init__(self, repo: Path) -> None:
+        self.repo = repo
+        self.files: dict[str, mf.EditableFile] = {}
+        self.edits: dict[tuple[str, int], _Edit] = {}
+        self.no_policy: set[str] = set()  # Helm values files: not Kubernetes objects
+
+    def edit(self, rel: Path, index: int, policy: bool = True) -> _Edit:
+        key = str(rel)
+        if key not in self.files:
+            self.files[key] = mf.EditableFile(self.repo, rel)
+        if not policy:
+            self.no_policy.add(key)
+        if (key, index) not in self.edits:
+            self.edits[(key, index)] = _Edit(self.files[key], index)
+        return self.edits[(key, index)]
+
+    def changes(self, first: str | None = None) -> list[FileChange]:
+        out: list[FileChange] = []
+        for key in sorted(self.files, key=lambda k: (k != first, k)):
+            ef = self.files[key]
+            after = ef.render()
+            if after == ef.original:
+                continue
+            policy: list[PolicyResult] = []
+            if key not in self.no_policy:
+                for (k, _i), e in self.edits.items():
+                    if k == key:
+                        policy += compare(e.before_plain, mf.to_plain(e.doc))
+            out.append(FileChange(path=key, before=ef.original, after=after, policy=policy))
+        return out
 
 
 def _helm_edits(
-    repo: Path, snap: Snapshot, wl: WorkloadRef, hints: list[RemediationHint], applied: list[str], notes: list[str]
-) -> list[FileChange]:
+    ws: _Workspace, snap: Snapshot, wl: WorkloadRef, hints: list[RemediationHint], applied: list[str], notes: list[str]
+) -> None:
+    repo = ws.repo
     release = _helm_release(snap, wl)
     if not release:
         raise RemediationError(
@@ -277,13 +312,9 @@ def _helm_edits(
             f"{wl.key} looks Helm-managed (release {release!r}) but no values for it were found in the repo "
             "(looked for Argo CD Applications, Flux HelmReleases and <release>/values*.yaml)"
         )
-    edits: dict[str, tuple[_Edit, helm.ValuesTarget]] = {}
 
     def open_target(t: helm.ValuesTarget) -> tuple[_Edit, CommentedMap]:
-        key = f"{t.path}#{t.index}"
-        if key not in edits:
-            edits[key] = (_Edit(repo, t.path, t.index), t)
-        e, _ = edits[key]
+        e = ws.edit(t.path, t.index, policy=False)
         return e, helm.values_root(e.ef, t)
 
     for h in hints:
@@ -313,18 +344,10 @@ def _helm_edits(
         f"Edited Helm values of release {release!r}; the chart renders the final manifest — check the "
         "rendered diff in your CD tool (e.g. Argo CD app diff) before merging."
     )
-    out = []
-    for e, _ in edits.values():
-        ch = e.change(check_policy=False)
-        if ch:
-            out.append(ch)
-    return out
 
 
-def _service_internal(
-    repo: Path, wl: WorkloadRef, names: list[str], applied: list[str], manual: list[str]
-) -> list[FileChange]:
-    out = []
+def _service_internal(ws: _Workspace, wl: WorkloadRef, names: list[str], applied: list[str], manual: list[str]) -> None:
+    repo = ws.repo
     for name in names:
         docs = mf.locate(repo, WorkloadRef(kind="Service", namespace=wl.namespace, name=name))
         if len(docs) != 1:
@@ -334,7 +357,7 @@ def _service_internal(
                 "service config, to ClusterIP / internal."
             )
             continue
-        e = _Edit(repo, docs[0].path, docs[0].index)
+        e = ws.edit(docs[0].path, docs[0].index)
         spec = mf.ensure_map(e.doc, "spec")
         old = spec.get("type", "ClusterIP")
         spec["type"] = "ClusterIP"
@@ -350,11 +373,8 @@ def _service_internal(
         for port in spec.get("ports") or []:
             if isinstance(port, dict):
                 port.pop("nodePort", None)
-        ch = e.change()
-        if ch:
-            out.append(ch)
+        if old != "ClusterIP":
             applied.append(f"Service {name}: type {old} → ClusterIP")
-    return out
 
 
 def build(
@@ -367,7 +387,7 @@ def build(
     manual = [h.summary for h in hints if h.kind not in AUTOMATABLE]
     applied: list[str] = []
     notes: list[str] = []
-    changes: list[FileChange] = []
+    ws = _Workspace(repo)
     if not automatable:
         return RemediationResult(changes=[], applied=[], manual=manual, notes=[])
 
@@ -386,11 +406,8 @@ def build(
         docs = mf.locate(repo, tref)
         if len(docs) != 1:
             raise RemediationError(f"{'no' if not docs else 'ambiguous'} manifest for {tref.key} in the GitOps repo")
-        e = _Edit(repo, docs[0].path, docs[0].index)
+        e = ws.edit(docs[0].path, docs[0].index)
         _apply_field_edits(e.doc, snap, group, applied, notes)
-        ch = e.change()
-        if ch:
-            changes.append(ch)
     targeted = {id(h) for g in other.values() for h in g}
     field_hints = [h for h in automatable if h.kind in FIELD_KINDS and id(h) not in targeted]
     main: _Edit | None = None
@@ -402,9 +419,9 @@ def build(
                     f"no manifest for {wl.kind} {wl.namespace}/{wl.name} in the GitOps repo; "
                     f"{', '.join(unsupported)} need the manifest (Helm values support: {', '.join(sorted(HELM_KINDS))})"
                 )
-            changes += _helm_edits(repo, snap, wl, field_hints, applied, notes)
+            _helm_edits(ws, snap, wl, field_hints, applied, notes)
         else:
-            main = _Edit(repo, target.path, target.index)
+            main = ws.edit(target.path, target.index)
             if not main.ef.style_preserved:
                 notes.append(f"{target.path}: YAML indentation style not recognised; formatting may change.")
             if target.namespace_source == "none":
@@ -476,15 +493,13 @@ def build(
                     applied.append(f"registered {Path(rel).name} in {kust.path}")
             elif h.kind == "make-service-internal":
                 names = [n for n in (p.get("services") or "").split(",") if n]
-                new_files += _service_internal(repo, wl, names, applied, manual)
+                _service_internal(ws, wl, names, applied, manual)
         except (KeyError, ValueError) as e:
             raise RemediationError(f"{h.kind}: {e}") from e
 
-    if main is not None:
-        ch = main.change()
-        if ch:
-            changes.insert(0, ch)
-    changes.extend(new_files)
+    changes = ws.changes(first=str(target.path) if target else None)
+    edited = {c.path for c in changes}
+    changes += [c for c in new_files if c.path not in edited]
     return RemediationResult(changes=changes, applied=applied, manual=manual, notes=notes)
 
 
@@ -539,6 +554,55 @@ def _apply_field_edits(
                 a, n = _harden(doc)
                 applied += a
                 notes += n
+            elif h.kind == "set-modsecurity-blocking":
+                if doc.get("kind") != "ConfigMap":
+                    raise RemediationError("set-modsecurity-blocking edits the ingress-nginx controller ConfigMap")
+                data = mf.ensure_map(doc, "data")
+                snippet = str(data.get("modsecurity-snippet") or "")
+                if re.search(r"^\s*SecRuleEngine\s+\w+", snippet, re.M | re.I):
+                    snippet = re.sub(r"^(\s*)SecRuleEngine\s+\w+", r"\1SecRuleEngine On", snippet, flags=re.M | re.I)
+                else:
+                    snippet = "SecRuleEngine On\n" + snippet
+                data["modsecurity-snippet"] = LiteralScalarString(snippet if snippet.endswith("\n") else snippet + "\n")
+                applied.append("ingress-nginx: ModSecurity SecRuleEngine → On (blocking)")
+                notes.append(
+                    "Blocking mode can reject legitimate requests that match a rule (false positives). Review the "
+                    "ModSecurity audit log in DetectionOnly first and roll out to staging before production."
+                )
+            elif h.kind == "set-fluentbit-option":
+                if doc.get("kind") != "ConfigMap":
+                    raise RemediationError("set-fluentbit-option edits the Fluent Bit ConfigMap")
+                data = mf.ensure_map(doc, "data")
+                if "fluent-bit.conf" not in data:
+                    raise RemediationError(
+                        "only classic fluent-bit.conf configs are edited automatically (YAML config: set it by hand)"
+                    )
+                edited = 0
+                for key_name in sorted(str(k) for k in data):
+                    if not key_name.endswith(".conf") or "parser" in key_name:
+                        continue
+                    new_text, count = fluentbit.set_option_classic(
+                        str(data[key_name]), p["section"], p["key"], p["value"]
+                    )
+                    if count:
+                        data[key_name] = LiteralScalarString(new_text)
+                        edited += count
+                if edited == 0:
+                    raise RemediationError(f"no [{p['section']}] section needed {p['key']} changed")
+                applied.append(f"Fluent Bit: {p['key']} {p['value']} in {edited} [{p['section']}] section(s)")
+                if p["key"].lower() == "retry_limit":
+                    notes.append(
+                        "Unlimited retries keep chunks until delivery; pair with storage.type filesystem so a long "
+                        "outage of the destination does not fill memory."
+                    )
+            elif h.kind == "add-toleration":
+                ps = mf.pod_spec(doc)
+                if not isinstance(ps.get("tolerations"), list):
+                    ps["tolerations"] = CommentedSeq()
+                tol = ps["tolerations"]
+                if not any(isinstance(t, dict) and t.get("operator") == "Exists" and not t.get("key") for t in tol):
+                    tol.append(CommentedMap(operator="Exists"))
+                    applied.append("tolerations += {operator: Exists} (runs on every node, including tainted ones)")
             elif h.kind == "set-kafka-config":
                 if doc.get("kind") != "Kafka":
                     raise RemediationError("set-kafka-config only edits a Strimzi Kafka resource")

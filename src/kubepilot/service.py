@@ -12,7 +12,7 @@ from typing import Any
 from kubepilot import remediation
 from kubepilot.changes import ChangePlan, PlanStore, merge_state, revert_changes
 from kubepilot.config import Settings
-from kubepilot.engine import components, dependencies, diagnose, logsig, rbac, security, selectors
+from kubepilot.engine import components, dependencies, diagnose, layers, logsig, rbac, security, selectors
 from kubepilot.engine.allowlist import Allowlist
 from kubepilot.engine.components import Component
 from kubepilot.engine.dependencies import Edge
@@ -71,6 +71,13 @@ def incident_dict(i: SecurityIncident) -> dict[str, Any]:
     }
 
 
+_MULTI_KINDS = {"set-fluentbit-option"}  # several independent edits of the same kind can apply at once
+
+
+def _hint_key(h: RemediationHint) -> str:
+    return f"{h.kind}:{h.params.get('key', '')}" if h.kind in _MULTI_KINDS else h.kind
+
+
 def _signal(s: LogSignal) -> dict[str, Any]:
     return {"kind": s.kind, "summary": s.summary, "excerpt": clean(s.excerpt, 200)}
 
@@ -79,12 +86,20 @@ class Analysis:
     """Components, dependency edges and component findings for one snapshot (computed once per call)."""
 
     def __init__(self, snap: Snapshot) -> None:
+        self.snap = snap
         self.components: list[Component] = components.detect(snap)
         self.edges: list[Edge] = dependencies.build(snap, self.components)
         self.findings: dict[str, list[Finding]] = {}
         for c in self.components:
             clients = {e.client.namespace for e in dependencies.clients_of(self.edges, c.key)}
-            self.findings[c.key] = components.diagnose_component(snap, c, clients)
+            self.findings[c.key] = components.diagnose_component(snap, c, clients, self.components)
+        for c in self.components:  # cross-layer: log pipelines feeding an unhealthy store
+            if c.layer == "logging":
+                self.findings[c.key] += dependencies.pipeline_findings(c, self.edges, self.findings)
+        # Not tied to one component: routes to broken backends, certificates
+        self.platform: list[Finding] = layers.ingress_findings(snap, self.components) + layers.certificate_findings(
+            snap
+        )
 
     def component(self, key: str) -> Component | None:
         return next((c for c in self.components if c.key == key), None)
@@ -169,6 +184,16 @@ class KubePilot:
             own = own + extra
         deps = dependencies.dependencies_of(analysis.edges, wl)
         upstream = dependencies.upstream_findings(wl, snap.pods_of(wl), own, analysis.edges, analysis.findings, signals)
+        routing = [f for f in analysis.platform if any(h.params.get("workload") == wl.key for h in f.remediations)]
+        own = own + [
+            f.model_copy(
+                update={
+                    "title": f"Users affected: {f.title}",
+                    "remediations": [],
+                }
+            )
+            for f in routing
+        ]
         ordered = sorted(upstream, key=lambda f: -f.severity) + sorted(own, key=lambda f: -f.severity)
         return ordered, signals, deps
 
@@ -209,6 +234,7 @@ class KubePilot:
             comp_rows.append(
                 {
                     "component": c.label,
+                    "layer": c.layer,
                     "status": components.status_of(fs),
                     "issues": len([f for f in fs if f.severity >= Severity.MEDIUM]),
                     "top_issue": clean(top.title, 160) if top and top.severity >= Severity.MEDIUM else None,
@@ -252,6 +278,11 @@ class KubePilot:
                 for i in incidents[:MAX_ITEMS]
             ],
             "components": comp_rows[:MAX_ITEMS],
+            "routing_and_certificates": [
+                {"object": f.workload.key, "severity": f.severity.label, "title": clean(f.title, 160)}
+                for f in sorted(analysis.platform, key=lambda f: -f.severity)
+                if not namespace or f.workload.namespace == k8s_name(namespace)
+            ][:MAX_ITEMS],
             "platform_incidents_hidden": hidden,
             "next_steps": "Use diagnose_workload, diagnose_component or investigate_security for details on any item."
             + (" Pass include_system=true to also see platform namespaces." if hidden else ""),
@@ -315,9 +346,11 @@ class KubePilot:
         findings = diagnose.diagnose_all(snap, include_hygiene=sev <= Severity.LOW, min_severity=sev)
         analysis = self._analysis(snap, namespace)
         seen = {f.id for f in findings}
-        for fs in analysis.findings.values():
+        for fs in [*analysis.findings.values(), analysis.platform]:
             findings += [f for f in fs if f.severity >= sev and f.id not in seen]
-        for wl in {f.workload for f in findings if f.workload.kind != "Component"}:
+        if namespace:
+            findings = [f for f in findings if f.workload.namespace == k8s_name(namespace)]
+        for wl in {f.workload for f in findings if f.workload.kind not in ("Component", "Ingress", "Certificate")}:
             own = [f for f in findings if f.workload == wl]
             findings += dependencies.upstream_findings(wl, snap.pods_of(wl), own, analysis.edges, analysis.findings)
         findings.sort(key=lambda f: (-f.severity, f.workload.key))
@@ -466,25 +499,28 @@ class KubePilot:
         # Component checks know the system (JVM heap, Kafka config): their hints win over generic ones.
         for f in sorted(findings, key=lambda f: (-f.severity, f.id not in comp_ids)):
             for h in f.remediations:
-                (sec if f.category == "security" else reliability).setdefault(h.kind, h)
-                source_of.setdefault(h.kind, []).append(f)
+                key = _hint_key(h)
+                (sec if f.category == "security" else reliability).setdefault(key, h)
+                source_of.setdefault(key, []).append(f)
         for h in inc.remediations if inc else []:
-            sec.setdefault(h.kind, h)  # component-specific hints (scoped selectors, client namespaces) win
+            sec.setdefault(_hint_key(h), h)  # component-specific hints (scoped selectors, client namespaces) win
         hints = {**sec, **reliability}
         if kinds:
-            unknown = set(kinds) - set(hints)
+            # a kind selects every hint of that kind ("set-fluentbit-option"), or one exact key
+            selected = [h for k, h in hints.items() if k in kinds or h.kind in kinds]
+            unknown = {k for k in kinds if not any(k in (key, h.kind) for key, h in hints.items())}
             if unknown:
-                raise ValueError(f"not applicable to {wl.key}: {sorted(unknown)}; available: {sorted(hints) or 'none'}")
-            selected = [hints[k] for k in kinds]
+                avail = sorted({h.kind for h in hints.values()} | set(hints))
+                raise ValueError(f"not applicable to {wl.key}: {sorted(unknown)}; available: {avail or 'none'}")
         else:
             # One concern per PR: reliability fixes first; otherwise security hardening.
             # Opt-in only: rollback-template (supersedes field edits) and isolate-workload (cuts traffic).
-            auto = {k: h for k, h in reliability.items() if k in remediation.AUTOMATABLE}
+            auto = {k: h for k, h in reliability.items() if h.kind in remediation.AUTOMATABLE}
             pool = auto or reliability or sec
             selected = [h for h in pool.values() if h.kind not in ("rollback-template", "isolate-workload")]
-        addressed = {f.id: f for h in selected for f in source_of.get(h.kind, [])}
+        addressed = {f.id: f for h in selected for f in source_of.get(_hint_key(h), [])}
         evidence = "; ".join(clean(f.explanation, 300) for f in list(addressed.values())[:2])
-        if inc and any(h.kind in sec for h in selected):
+        if inc and any(_hint_key(h) in sec for h in selected):
             evidence = (evidence + " | " if evidence else "") + clean(inc.summary, 300)
         result = remediation.build(store.repo, snap, wl, selected)
         plan, token = store.create(
@@ -493,7 +529,7 @@ class KubePilot:
             evidence or "operator request",
             addresses=[{"id": f.id, "title": clean(f.title, 200)} for f in addressed.values()],
         )
-        return self._plan_out(store, plan, token, sorted(hints))
+        return self._plan_out(store, plan, token, sorted({h.kind for h in hints.values()}))
 
     def _plan_out(self, store: PlanStore, plan: ChangePlan, token: str, available: list[str]) -> dict[str, Any]:
         out = plan.public()
@@ -612,6 +648,7 @@ class KubePilot:
                 {
                     "component": c.label,
                     "kind": c.kind,
+                    "layer": c.layer,
                     "namespace": c.namespace,
                     "name": c.name,
                     "managed_by": clean(c.managed_by, 80),
@@ -635,7 +672,8 @@ class KubePilot:
         comp = analysis.find(k8s_name(namespace), k8s_name(name))
         if comp is None:
             raise NotFound(
-                f"no Kafka/RabbitMQ/OpenSearch/Redis/PostgreSQL/... component named {name!r} in namespace {namespace!r}"
+                f"no component (data store, ingress controller, gateway or log agent) named {name!r} "
+                f"in namespace {namespace!r}"
             )
         fs = analysis.findings[comp.key]
         clients = dependencies.clients_of(analysis.edges, comp.key)
@@ -643,6 +681,7 @@ class KubePilot:
             **self._meta(snap),
             "component": comp.label,
             "kind": comp.kind,
+            "layer": comp.layer,
             "managed_by": clean(comp.managed_by, 80),
             "version": clean(comp.version, 60) or None,
             "remediation_target": comp.ref.key,
@@ -655,6 +694,27 @@ class KubePilot:
                 {"name": s.name, "type": s.type, "ports": [x.port for x in s.ports]} for s in comp.services[:10]
             ],
             "clients": [{"workload": e.client.key, "service": e.service, "via_env": e.env_var} for e in clients[:20]],
+            **(
+                {
+                    "routes": [
+                        {"ingress": f"{i.namespace}/{i.name}", "hosts": i.hosts[:5]}
+                        for i, _ in layers.routes_of(analysis.snap, comp, analysis.components)
+                    ][:20]
+                }
+                if comp.layer == "edge"
+                else {}
+            ),
+            **(
+                {
+                    "ships_to": [
+                        {"component": e.component_label, "service": e.service, "output": e.env_var.split(":", 1)[1]}
+                        for e in analysis.edges
+                        if e.client == comp.ref and e.env_var.startswith("output:")
+                    ]
+                }
+                if comp.layer == "logging"
+                else {}
+            ),
             "findings": [finding_dict(f) for f in fs],
         }
 

@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import Any
 
 from kubepilot import quantity
-from kubepilot.engine import selectors
+from kubepilot.engine import layers, selectors
 from kubepilot.models import (
     Container,
     CustomResource,
@@ -51,6 +51,7 @@ DISPLAY = {
     "redis": "Redis",
     "mongodb": "MongoDB",
 }
+DISPLAY.update(layers.PLATFORM_DISPLAY)
 # Systems whose availability depends on a majority of members being up.
 QUORUM_KINDS = {"kafka", "zookeeper", "rabbitmq", "opensearch", "elasticsearch", "mongodb"}
 JVM_KINDS = {"kafka", "zookeeper", "opensearch", "elasticsearch"}
@@ -105,6 +106,9 @@ _OPERATOR_NAME = {
 
 def classify_image(image: str) -> str | None:
     """Map a container image to a component kind (or None)."""
+    platform = layers.classify_platform_image(image)
+    if platform:
+        return platform
     repo = image.split("@")[0]
     last = repo.rsplit("/", 1)[-1].split(":")[0].lower()
     if _EXCLUDE.search(last):
@@ -147,6 +151,10 @@ class Component:
     @property
     def key(self) -> str:
         return f"{self.kind}/{self.namespace}/{self.name}"
+
+    @property
+    def layer(self) -> str:
+        return layers.layer_of(self.kind)
 
     @property
     def label(self) -> str:
@@ -337,10 +345,10 @@ def detect(snap: Snapshot) -> list[Component]:
     # 2) image-based (Helm charts, plain manifests)
     groups: dict[tuple[str, str, str], Component] = {}
     for s in snap.specs:
-        if s.ref.key in claimed_specs or s.kind == "DaemonSet":
+        if s.ref.key in claimed_specs:
             continue
         skind = next((k for c in s.containers if not c.init and (k := classify_image(c.image))), None)
-        if skind is None:
+        if skind is None or (s.kind == "DaemonSet" and skind not in layers.LOGGING_KINDS):
             continue
         instance = s.labels.get("app.kubernetes.io/instance") or s.labels.get("release") or s.name
         gkey = (skind, s.namespace, instance)
@@ -1307,7 +1315,14 @@ def auth_disabled(comp: Component) -> bool:
     return _search_security_disabled(comp) or _redis_no_auth(comp) or _postgres_trust(comp) or _mongo_no_auth(comp)
 
 
-def diagnose_component(snap: Snapshot, comp: Component, client_namespaces: set[str] | None = None) -> list[Finding]:
+def diagnose_component(
+    snap: Snapshot,
+    comp: Component,
+    client_namespaces: set[str] | None = None,
+    all_components: list[Component] | None = None,
+) -> list[Finding]:
+    if comp.layer != "data":
+        return _diagnose_platform(snap, comp, all_components or [comp])
     findings: list[Finding] = []
     findings += _check_availability(comp)
     findings += _check_quorum(comp)
@@ -1327,11 +1342,30 @@ def diagnose_component(snap: Snapshot, comp: Component, client_namespaces: set[s
     return sorted(findings, key=lambda f: -f.severity)
 
 
+def _diagnose_platform(snap: Snapshot, comp: Component, comps: list[Component]) -> list[Finding]:
+    findings = _check_availability(comp)
+    daemon = any(s.kind == "DaemonSet" for s in comp.specs)
+    if comp.layer == "edge":
+        findings += layers.check_ingress_nginx(snap, comp, comps) if comp.kind == "ingress-nginx" else []
+        findings += layers.check_kong(snap, comp, comps) if comp.kind == "kong" else []
+        if not daemon:
+            findings += _check_single(comp)
+            findings += _check_pdb(snap, comp)
+            findings += _check_spread(snap, comp)
+    else:
+        findings += layers.check_logging(snap, comp)
+    findings += _check_resources(comp)
+    # an "edge-down" finding already says it all: drop the generic "down" duplicate
+    if any(f.title.endswith("unreachable from outside") for f in findings):
+        findings = [f for f in findings if " is down (0/" not in f.title]
+    return sorted(findings, key=lambda f: -f.severity)
+
+
 def status_of(findings: list[Finding]) -> str:
     """down | critical | degraded (availability, from reliability findings) | at-risk (serving, but high/critical
     security or config issues) | healthy."""
     rel = [f for f in findings if f.category == "reliability"]
-    if any("is down" in f.title or "lost quorum" in f.title for f in rel):
+    if any(" is down" in f.title or "lost quorum" in f.title for f in rel):
         return "down"
     if any(f.severity == Severity.CRITICAL for f in rel):
         return "critical"

@@ -183,6 +183,7 @@ class WorkloadSpec(BaseModel):
     template_volumes: list[Volume] = Field(default_factory=list)
     service_name: str | None = None  # StatefulSet governing service
     owner: WorkloadRef | None = None  # e.g. operator CR owning a StatefulSet
+    tolerations: list[dict[str, str]] = Field(default_factory=list)  # pod template tolerations
 
     @property
     def ref(self) -> WorkloadRef:
@@ -226,6 +227,43 @@ class PDBInfo(BaseModel):
     min_available: str | None = None
     max_unavailable: str | None = None
     disruptions_allowed: int | None = None
+
+
+class IngressPath(BaseModel):
+    host: str | None = None
+    path: str = "/"
+    service: str | None = None
+    port: str | None = None
+
+
+class IngressInfo(BaseModel):
+    namespace: str
+    name: str
+    ingress_class: str | None = None
+    paths: list[IngressPath] = Field(default_factory=list)
+    tls_hosts: list[str] = Field(default_factory=list)
+    tls_secrets: list[str] = Field(default_factory=list)
+    annotations: dict[str, str] = Field(default_factory=dict, repr=False)  # parsed internally, never echoed whole
+
+    @property
+    def hosts(self) -> list[str]:
+        return sorted({p.host for p in self.paths if p.host})
+
+
+class IngressClassInfo(BaseModel):
+    name: str
+    controller: str = ""
+    default: bool = False
+
+
+class ConfigMapInfo(BaseModel):
+    """Configuration of detected platform components (Fluent Bit, ingress-nginx, ...).
+
+    ``data`` is parsed in memory only and is NEVER returned to a model: config files can embed credentials."""
+
+    namespace: str
+    name: str
+    data: dict[str, str] = Field(default_factory=dict, repr=False)
 
 
 class Condition(BaseModel):

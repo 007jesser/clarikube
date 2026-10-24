@@ -40,8 +40,11 @@ _KIND_FIELD = {
     "PersistentVolumeClaim": "pvcs",
     "Service": "services",
     "PodDisruptionBudget": "pdbs",
+    "Ingress": "ingresses",
+    "IngressClass": "ingress_classes",
+    "ConfigMap": "config_maps",
 }
-_CLUSTER_SCOPED = {"Node", "ClusterRole", "ClusterRoleBinding"}
+_CLUSTER_SCOPED = {"Node", "ClusterRole", "ClusterRoleBinding", "IngressClass"}
 
 
 def _iter_objects(doc: Any) -> list[dict[str, Any]]:

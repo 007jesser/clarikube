@@ -12,12 +12,16 @@ from typing import Any
 from kubepilot.models import (
     BindingInfo,
     Condition,
+    ConfigMapInfo,
     Container,
     ContainerState,
     CustomResource,
     EnvVar,
     Event,
     FalcoAlert,
+    IngressClassInfo,
+    IngressInfo,
+    IngressPath,
     LabelSelector,
     NetworkPolicyInfo,
     Node,
@@ -494,6 +498,9 @@ def workload_spec(raw: Raw) -> WorkloadSpec:
         template_volumes=_volumes(tmpl),
         service_name=spec.get("serviceName"),
         owner=WorkloadRef(kind=ref["kind"], namespace=ns, name=ref["name"]) if ref else None,
+        tolerations=[
+            {str(k): str(v) for k, v in t.items()} for t in tmpl.get("tolerations") or [] if isinstance(t, dict)
+        ],
     )
 
 
@@ -548,6 +555,57 @@ def pdb(raw: Raw) -> PDBInfo:
     )
 
 
+def ingress(raw: Raw) -> IngressInfo:
+    m = _meta(raw)
+    spec = raw.get("spec") or {}
+    ann = {str(k): str(v) for k, v in (m.get("annotations") or {}).items()}
+    paths: list[IngressPath] = []
+    default = (spec.get("defaultBackend") or {}).get("service") or {}
+    if default:
+        port = default.get("port") or {}
+        paths.append(IngressPath(service=default.get("name"), port=_s(port.get("number") or port.get("name"))))
+    for rule in spec.get("rules") or []:
+        for p in ((rule.get("http") or {}).get("paths")) or []:
+            svc = ((p.get("backend") or {}).get("service")) or {}
+            port = svc.get("port") or {}
+            paths.append(
+                IngressPath(
+                    host=rule.get("host"),
+                    path=p.get("path") or "/",
+                    service=svc.get("name"),
+                    port=_s(port.get("number") or port.get("name")),
+                )
+            )
+    return IngressInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        ingress_class=spec.get("ingressClassName") or ann.get("kubernetes.io/ingress.class"),
+        paths=paths,
+        tls_hosts=sorted({h for t in spec.get("tls") or [] for h in t.get("hosts") or []}),
+        tls_secrets=sorted({t["secretName"] for t in spec.get("tls") or [] if t.get("secretName")}),
+        annotations=ann,
+    )
+
+
+def ingress_class(raw: Raw) -> IngressClassInfo:
+    m = _meta(raw)
+    ann = m.get("annotations") or {}
+    return IngressClassInfo(
+        name=m.get("name", ""),
+        controller=str((raw.get("spec") or {}).get("controller") or ""),
+        default=str(ann.get("ingressclass.kubernetes.io/is-default-class", "")).lower() == "true",
+    )
+
+
+def config_map(raw: Raw) -> ConfigMapInfo:
+    m = _meta(raw)
+    return ConfigMapInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        data={str(k): str(v) for k, v in (raw.get("data") or {}).items()},
+    )
+
+
 def custom_resource(raw: Raw) -> CustomResource:
     m = _meta(raw)
     status = raw.get("status") or {}
@@ -558,7 +616,9 @@ def custom_resource(raw: Raw) -> CustomResource:
         namespace=m.get("namespace", "default"),
         name=m.get("name", ""),
         labels=dict(m.get("labels") or {}),
-        spec=dict(raw.get("spec") or {}),
+        # Kong plugins keep plugin/config at the top level instead of under spec
+        spec=dict(raw.get("spec") or {})
+        or ({k: raw[k] for k in ("plugin", "config", "configFrom") if k in raw} if "plugin" in raw else {}),
         status=dict(status) if isinstance(status, dict) else {},
         conditions=[
             Condition(

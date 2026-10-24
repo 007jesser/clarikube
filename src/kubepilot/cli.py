@@ -199,10 +199,17 @@ def cmd_demo(args: argparse.Namespace) -> int:
             print(f"  [{i['severity']:>8}] {i['workload']}: {i['title']}{cause}")
         for i in health["security_incidents"]:
             print(f"  [{i['severity']:>8}] {i['workload']}: security score {i['score']}")
-        print("\nData systems:")
-        for c in health["components"]:
-            issue = f" — {c['top_issue']}" if c["top_issue"] else ""
-            print(f"  [{c['status']:>8}] {c['component']}{issue}")
+        for layer, label in (("edge", "Edge"), ("data", "Data systems"), ("logging", "Log pipeline")):
+            rows = [c for c in health["components"] if c["layer"] == layer]
+            if rows:
+                print(f"\n{label}:")
+            for c in rows:
+                issue = f" — {c['top_issue']}" if c["top_issue"] else ""
+                print(f"  [{c['status']:>8}] {c['component']}{issue}")
+        if health["routing_and_certificates"]:
+            print("\nRouting & TLS:")
+            for r in health["routing_and_certificates"]:
+                print(f"  [{r['severity']:>8}] {r['title']}")
         print("\nDetails:   kubepilot demo-diagnose shop checkout")
         print("           kubepilot demo-diagnose shop orders     (app failing because of Kafka)")
         print("Fix flow:  kubepilot demo --setup ./kubepilot-demo   (prints an MCP client config)")

@@ -9,9 +9,12 @@ from typing import Any, Protocol
 from kubepilot import normalize
 from kubepilot.models import (
     BindingInfo,
+    ConfigMapInfo,
     CustomResource,
     Event,
     FalcoAlert,
+    IngressClassInfo,
+    IngressInfo,
     NetworkPolicyInfo,
     Node,
     PDBInfo,
@@ -46,6 +49,9 @@ class RawCluster:
     services: list[Raw] = field(default_factory=list)
     pdbs: list[Raw] = field(default_factory=list)
     custom_resources: list[Raw] = field(default_factory=list)
+    ingresses: list[Raw] = field(default_factory=list)
+    ingress_classes: list[Raw] = field(default_factory=list)
+    config_maps: list[Raw] = field(default_factory=list)  # only those of detected platform components
 
 
 @dataclass
@@ -68,6 +74,9 @@ class Snapshot:
     services: list[ServiceInfo] = field(default_factory=list)
     pdbs: list[PDBInfo] = field(default_factory=list)
     custom_resources: list[CustomResource] = field(default_factory=list)
+    ingresses: list[IngressInfo] = field(default_factory=list)
+    ingress_classes: list[IngressClassInfo] = field(default_factory=list)
+    config_maps: list[ConfigMapInfo] = field(default_factory=list)
 
     @classmethod
     def build(
@@ -95,6 +104,9 @@ class Snapshot:
             services=[normalize.service(s) for s in raw.services],
             pdbs=[normalize.pdb(p) for p in raw.pdbs],
             custom_resources=[normalize.custom_resource(c) for c in raw.custom_resources],
+            ingresses=[normalize.ingress(i) for i in raw.ingresses],
+            ingress_classes=[normalize.ingress_class(i) for i in raw.ingress_classes],
+            config_maps=[normalize.config_map(c) for c in raw.config_maps],
         )
 
     # ------------------------------------------------------------ lookups
@@ -121,6 +133,9 @@ class Snapshot:
     def replicasets_of(self, wl: WorkloadRef) -> list[ReplicaSetInfo]:
         rs = [r for r in self.replicasets if r.owner == wl]
         return sorted(rs, key=lambda r: (r.revision or 0, r.created_at or self.now))
+
+    def config_map(self, namespace: str, name: str) -> ConfigMapInfo | None:
+        return next((c for c in self.config_maps if c.namespace == namespace and c.name == name), None)
 
     def spec_of(self, wl: WorkloadRef) -> WorkloadSpec | None:
         return next((s for s in self.specs if s.ref == wl), None)

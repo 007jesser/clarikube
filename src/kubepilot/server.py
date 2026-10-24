@@ -22,9 +22,10 @@ kubepilot gives you read-only, pre-analysed views of a Kubernetes cluster and a 
 
 Workflow:
 1. Start broad: cluster_health (or find_problems / security_triage).
-2. Drill in: diagnose_workload for apps, diagnose_component for data systems (Kafka, RabbitMQ, OpenSearch,
-   Elasticsearch, Redis, PostgreSQL, MongoDB, ...), investigate_security for security. When a finding says
-   "Likely root cause: <component>", diagnose that component next instead of the app.
+2. Drill in: diagnose_workload for apps; diagnose_component for platform components — data stores (Kafka,
+   RabbitMQ, OpenSearch, Elasticsearch, Redis, PostgreSQL, MongoDB), edge (ingress-nginx + ModSecurity, Kong)
+   and log pipelines (Fluent Bit, Fluentd, Vector); investigate_security for security. When a finding says
+   "Likely root cause: <component>" or "logs are not being delivered to <component>", diagnose that next.
 3. To fix: plan_remediation -> show the diff, policy results and notes to the human -> only after
    explicit human approval, commit_plan. Fixes become a Git branch/PR; nothing is applied to the cluster.
 4. After the PR is merged and synced: verify_fix. If the change made things worse: plan_revert (same
@@ -94,15 +95,17 @@ def create_server(kp: KubePilot) -> MCPServer:
     @mcp.tool(annotations=READ)
     @_errors
     def list_components(namespace: str | None = None) -> dict[str, Any]:
-        """Data systems found in the cluster (Kafka, RabbitMQ, OpenSearch/Elasticsearch, Redis, PostgreSQL,
-        MongoDB, ...), how they are managed (operator/Helm/manifests), member readiness, status and clients."""
+        """Platform components by layer: data (Kafka, RabbitMQ, OpenSearch/Elasticsearch, Redis, PostgreSQL,
+        MongoDB), edge (ingress-nginx, Kong), logging (Fluent Bit, Fluentd, Vector); how they are managed,
+        member readiness, status and who depends on them."""
         return kp.list_components(namespace)
 
     @mcp.tool(annotations=READ)
     @_errors
     def diagnose_component(namespace: str, name: str) -> dict[str, Any]:
-        """Health and configuration checks for one data system (by component, CR, StatefulSet or pod name):
-        quorum, replication, JVM heap vs limit, storage, auth, exposure, PDB, spread; with fixes."""
+        """Checks for one platform component (by component, CR, controller or pod name). Data stores: quorum,
+        replication, JVM heap, storage, auth, exposure. Edge: CVEs, retired controller, WAF mode, admin exposure,
+        routes. Log agents: node coverage, retries/buffers, TLS, destination health. With fixes."""
         return kp.diagnose_component(namespace, name)
 
     @mcp.tool(annotations=READ)

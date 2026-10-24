@@ -60,6 +60,32 @@ Notes:
 - Operator phases are split into *busy* (Creating, Updating, ApplyingChanges, Pending, Initializing… → medium,
   "still reconciling") and *failed* (anything with fail/invalid/stalled/error → high).
 
+## Edge, logging, routing, certificates — verified Oct 2026
+- **ingress-nginx retirement**: best-effort maintenance until March 2026, then no releases, bug fixes or security
+  fixes; existing installs keep working (kubernetes/ingress-nginx README, kubernetes.io blog 2025-11-11 and
+  2026-01-29). kubepilot raises it from 2026-04-01.
+- **IngressNightmare** (CVE-2025-1974, CVSS 9.8, plus CVE-2025-1097/1098/24514/24513): fixed in v1.11.5 and
+  v1.12.1; kubepilot flags versions < 1.11.5 and 1.12.0. The controller image tag carries the version.
+- **ModSecurity in ingress-nginx**: ConfigMap keys `enable-modsecurity`, `enable-owasp-modsecurity-crs`,
+  `modsecurity-snippet` (all default off/empty); Ingress annotations `nginx.ingress.kubernetes.io/enable-modsecurity`,
+  `enable-owasp-core-rules`, `modsecurity-snippet`. The bundled config uses **DetectionOnly**; blocking needs
+  `SecRuleEngine On` (ingress-nginx docs, third-party-addons/modsecurity.md). `allow-snippet-annotations` defaults to
+  false. The controller ConfigMap is the `--configmap=<ns>/<name>` argument.
+- **Kong**: Admin API 8001 (http) / 8444 (https), Kong Manager 8002 / 8445, proxy 8000 / 8443 (Kong Helm chart
+  values). `KONG_ADMIN_LISTEN` sets the admin listeners. `KongPlugin`/`KongClusterPlugin` are
+  `configuration.konghq.com/v1` with `plugin`/`config` at the top level; routes reference them with the
+  `konghq.com/plugins` annotation. Rate limiting `policy: local` counts per node.
+- **Fluent Bit**: `Retry_Limit` defaults to **1** (then the chunk is discarded); `False`/`no_limits` = unlimited,
+  `no_retries` = none. Tail input `Mem_Buf_Limit` has no default (unbounded) unless `storage.type filesystem`. Output
+  `tls` defaults to off (fluent-bit-docs: administration/scheduling-and-retries.md, pipeline/inputs/tail.md,
+  administration/transport-security.md). Classic config: `[SECTION]` + `@INCLUDE`; YAML: `pipeline.inputs/outputs`.
+- **IngressClass**: `spec.controller` `k8s.io/ingress-nginx`, `ingress-controllers.konghq.com/kong`; default class via
+  annotation `ingressclass.kubernetes.io/is-default-class`.
+- **cert-manager**: `certificates.cert-manager.io/v1`, `status.notAfter`, `status.renewalTime`, conditions `Ready`,
+  `Issuing` (reason `Failed` while renewal fails). Default renewal at 2/3 of the lifetime.
+- ConfigMaps are read only for pods running Fluent Bit / Fluentd / Vector / ingress-nginx / Kong (mounted volumes and
+  `--configmap`), one GET per name, with the optional `kubepilot-config` role.
+
 ## Data-system rules of thumb used by checks
 - JVM heap ≤ 75% of the container limit (Kafka); ≤ 50% for OpenSearch/Elasticsearch (page cache).
 - Kafka `min.insync.replicas` must be < replication factor to tolerate one broker down; acks=all writes fail

@@ -34,3 +34,8 @@
 | 30 | `kubepilot commit` requires an interactive TTY | Gives users without an MCP client a commit path while keeping agents (which run shells without a TTY) out of it. |
 | 31 | Operator CRD versions are tried newest-first | Strimzi 1.0 removed `v1beta2`; older clusters only serve it. One code path supports both. |
 | 32 | Proposed memory limits are rounded up (128Mi / 512Mi steps) | `2731Mi` reads like a bug in a PR; humans write `3Gi`. |
+| 33 | Platform layers reuse the component engine (`layer`: data / edge / logging) | One detection, dependency and remediation path for every layer; adding a system is checks + image patterns, not a new subsystem. |
+| 34 | ConfigMaps are fetched by name, only for platform pods, behind an optional role | Fluent Bit and ingress-nginx are configured by ConfigMaps; listing all ConfigMaps cluster-wide would read far more than needed. Contents never leave the process. |
+| 35 | Opinionated-but-common gaps are low/medium, never critical | e.g. "no WAF" is not flagged at all; DetectionOnly WAF is medium; local rate limits are low. Critical is reserved for exploitable or outage-level issues (exposed Kong admin, IngressNightmare, expired cert). |
+| 36 | One file is opened once per plan (`_Workspace`) | Two fixes in the same multi-document file (DaemonSet + its ConfigMap) previously produced two conflicting changes; now they merge into one diff. Found while building the Fluent Bit fixes. |
+| 37 | A hint kind can carry several independent edits (`set-fluentbit-option:Retry_Limit`, `:Mem_Buf_Limit`) | Selecting the kind applies all of them; an exact key applies one. |

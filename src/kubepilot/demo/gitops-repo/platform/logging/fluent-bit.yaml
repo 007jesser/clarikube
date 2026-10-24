@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluent-bit
+        app.kubernetes.io/instance: fluent-bit
+    spec:
+      containers:
+        - name: fluent-bit
+          image: cr.fluentbit.io/fluent/fluent-bit:3.2.2
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /fluent-bit/etc/
+            - name: varlog
+              mountPath: /var/log
+      volumes:
+        - name: config
+          configMap:
+            name: fluent-bit
+        - name: varlog
+          hostPath:
+            path: /var/log
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Log_Level     info
+        Parsers_File  parsers.conf
+
+    @INCLUDE input-kubernetes.conf
+    @INCLUDE output.conf
+  input-kubernetes.conf: |
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*.log
+        multiline.parser  docker, cri
+  output.conf: |
+    [OUTPUT]
+        Name            opensearch
+        Match           kube.*
+        Host            search.data.svc.cluster.local
+        Port            9200
+        HTTP_User       logs
+        HTTP_Passwd     ${OPENSEARCH_PASSWORD}
+        Suppress_Type_Name On
+
+    [OUTPUT]
+        Name            http
+        Match           kube.*
+        Host            ingest.logs-saas.example.com
+        Port            80
+        URI             /v1/logs
+  parsers.conf: |
+    [PARSER]
+        Name   json
+        Format json
