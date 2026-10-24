@@ -81,6 +81,9 @@ lab-reset:          ## back to baseline
 lab-mcp:            ## MCP server over stdio wired to the lab (what Claude Desktop launches)
 	./lab/mcp.sh
 
+lab-report:         ## launch report: findings, speed, token savings vs raw kubectl + redacted fixture
+	$(LAB_ENV) KUBEPILOT_READ_LOGS=true uv run python lab/report.py
+
 lab-capture:        ## save the live lab as a fixture (turn real bugs into tests)
 	uv run kubepilot capture --out examples/lab-capture-$$(date +%Y%m%d-%H%M)
 
