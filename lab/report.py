@@ -42,7 +42,7 @@ def timed(fn: Any, *a: Any, **kw: Any) -> tuple[Any, float, str | None]:
     try:
         out = fn(*a, **kw)
         err = None
-    except Exception as e:  # noqa: BLE001 - a report must survive one failing tool
+    except Exception as e:  # a report must survive one failing tool
         out, err = None, f"{type(e).__name__}: {e}"
     return out, round(time.perf_counter() - t0, 2), err
 
