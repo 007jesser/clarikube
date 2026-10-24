@@ -304,10 +304,13 @@ def cmd_capture(args: argparse.Namespace) -> int:
     from kubepilot.redact import redact_objects
 
     raw = KubeSource(context=Settings.from_env().kube_context).raw_dump(args.namespace)
-    (out / "meta.yaml").write_text(yaml.safe_dump({"now": datetime.now(UTC).isoformat()}))
+    meta: dict[str, Any] = {"now": datetime.now(UTC).isoformat()}
+    if raw.server_version:
+        meta["server_version"] = raw.server_version
+    (out / "meta.yaml").write_text(yaml.safe_dump(meta))
     for attr in raw.__dataclass_fields__:
         items = getattr(raw, attr)
-        if items:
+        if items and isinstance(items, list):
             doc = {"apiVersion": "v1", "kind": "List", "items": redact_objects(items)}
             (out / f"{attr}.yaml").write_text(yaml.safe_dump(doc))
     print(

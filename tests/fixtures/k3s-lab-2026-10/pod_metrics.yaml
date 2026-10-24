@@ -1,0 +1,244 @@
+apiVersion: v1
+items:
+- containers:
+  - name: falcosidekick
+    usage:
+      cpu: 451921n
+      memory: 13852Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: falcosidekick
+      app.kubernetes.io/part-of: falcosidekick
+      app.kubernetes.io/version: 2.31.1
+      helm.sh/chart: falcosidekick-0.14.1
+      pod-template-hash: 84bc4c6495
+    name: falco-falcosidekick-84bc4c6495-9rjnt
+    namespace: falco
+  timestamp: '2026-10-24T23:09:24Z'
+  window: 15.589s
+- containers:
+  - name: falcosidekick
+    usage:
+      cpu: 382658n
+      memory: 25584Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: falcosidekick
+      app.kubernetes.io/part-of: falcosidekick
+      app.kubernetes.io/version: 2.31.1
+      helm.sh/chart: falcosidekick-0.14.1
+      pod-template-hash: 84bc4c6495
+    name: falco-falcosidekick-84bc4c6495-vgc97
+    namespace: falco
+  timestamp: '2026-10-24T23:09:15Z'
+  window: 10.887s
+- containers:
+  - name: falco
+    usage:
+      cpu: 61604600n
+      memory: 167152Ki
+  - name: falcoctl-artifact-follow
+    usage:
+      cpu: '0'
+      memory: 17208Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/name: falco
+      controller-revision-hash: 697df57947
+      pod-template-generation: '1'
+    name: falco-mchvx
+    namespace: falco
+  timestamp: '2026-10-24T23:09:00Z'
+  window: 14.205s
+- containers:
+  - name: coredns
+    usage:
+      cpu: 2714273n
+      memory: 17284Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      k8s-app: kube-dns
+      pod-template-hash: 7cfb7bc9c7
+    name: coredns-7cfb7bc9c7-28qzj
+    namespace: kube-system
+  timestamp: '2026-10-24T23:09:18Z'
+  window: 11.371s
+- containers:
+  - name: local-path-provisioner
+    usage:
+      cpu: 108395n
+      memory: 8624Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app: local-path-provisioner
+      pod-template-hash: 77b9867795
+    name: local-path-provisioner-77b9867795-95kmf
+    namespace: kube-system
+  timestamp: '2026-10-24T23:09:18Z'
+  window: 12.602s
+- containers:
+  - name: metrics-server
+    usage:
+      cpu: 5414505n
+      memory: 24700Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      k8s-app: metrics-server
+      pod-template-hash: 6dc596dfb8
+    name: metrics-server-6dc596dfb8-wqlkv
+    namespace: kube-system
+  timestamp: '2026-10-24T23:09:19Z'
+  window: 13.691s
+- containers:
+  - name: frontend
+    usage:
+      cpu: '0'
+      memory: 13132Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app: frontend
+      pod-template-hash: 6c968f8b4b
+    name: frontend-6c968f8b4b-995mt
+    namespace: shop
+  timestamp: '2026-10-24T23:09:21Z'
+  window: 16.529s
+- containers:
+  - name: payment-api
+    usage:
+      cpu: '0'
+      memory: 1928Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app: payment-api
+      pod-template-hash: f876794bc
+    name: payment-api-f876794bc-m6rwz
+    namespace: shop
+  timestamp: '2026-10-24T23:09:12Z'
+  window: 16.983s
+- containers:
+  - name: rabbitmq
+    usage:
+      cpu: 56390524n
+      memory: 90024Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      batch.kubernetes.io/controller-uid: fa8c5757-d236-413f-9364-8602fe861a24
+      batch.kubernetes.io/job-name: scan-vulnerabilityreport-554bb8c8
+      controller-uid: fa8c5757-d236-413f-9364-8602fe861a24
+      job-name: scan-vulnerabilityreport-554bb8c8
+      resource-spec-hash: 84c7b69d5f
+      trivy-operator.resource.kind: StatefulSet
+      trivy-operator.resource.name: queue
+      trivy-operator.resource.namespace: data
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-554bb8c8-qs99f
+    namespace: trivy-system
+  timestamp: '2026-10-24T23:09:14Z'
+  window: 14.944s
+- containers:
+  - name: payment-api
+    usage:
+      cpu: 57581692n
+      memory: 39500Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      batch.kubernetes.io/controller-uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+      batch.kubernetes.io/job-name: scan-vulnerabilityreport-6595dff849
+      controller-uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+      job-name: scan-vulnerabilityreport-6595dff849
+      resource-spec-hash: 569d9f59f6
+      trivy-operator.resource.kind: ReplicaSet
+      trivy-operator.resource.name: payment-api-f876794bc
+      trivy-operator.resource.namespace: shop
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-6595dff849-chrmb
+    namespace: trivy-system
+  timestamp: '2026-10-24T23:09:20Z'
+  window: 12.29s
+- containers:
+  - name: api
+    usage:
+      cpu: 51215603n
+      memory: 39472Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      batch.kubernetes.io/controller-uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+      batch.kubernetes.io/job-name: scan-vulnerabilityreport-65f876f44d
+      controller-uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+      job-name: scan-vulnerabilityreport-65f876f44d
+      resource-spec-hash: 86b6dc6c57
+      trivy-operator.resource.kind: ReplicaSet
+      trivy-operator.resource.name: api-b94f577c9
+      trivy-operator.resource.namespace: shop
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-65f876f44d-xf8t7
+    namespace: trivy-system
+  timestamp: '2026-10-24T23:09:13Z'
+  window: 19.573s
+- containers:
+  - name: trivy-operator
+    usage:
+      cpu: 9719448n
+      memory: 137380Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/instance: trivy-operator
+      app.kubernetes.io/name: trivy-operator
+      pod-template-hash: 5649bd984b
+    name: trivy-operator-5649bd984b-pqwzg
+    namespace: trivy-system
+  timestamp: '2026-10-24T23:09:15Z'
+  window: 13.78s
+- containers:
+  - name: trivy-server
+    usage:
+      cpu: 121676n
+      memory: 212976Ki
+  kind: PodMetrics
+  metadata:
+    creationTimestamp: '2026-10-24T23:09:26Z'
+    labels:
+      app.kubernetes.io/instance: trivy-server
+      app.kubernetes.io/name: trivy-server
+      apps.kubernetes.io/pod-index: '0'
+      controller-revision-hash: trivy-server-8978f95ff
+      statefulset.kubernetes.io/pod-name: trivy-server-0
+    name: trivy-server-0
+    namespace: trivy-system
+  timestamp: '2026-10-24T23:09:11Z'
+  window: 14.103s
+kind: List

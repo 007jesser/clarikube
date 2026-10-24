@@ -1,0 +1,1303 @@
+apiVersion: v1
+items:
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '2'
+      deployment.kubernetes.io/max-replicas: '3'
+      deployment.kubernetes.io/revision: '1'
+      meta.helm.sh/release-name: falco
+      meta.helm.sh/release-namespace: falco
+    creationTimestamp: '2026-10-23T21:19:41+00:00'
+    generation: 3
+    labels:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: falcosidekick
+      app.kubernetes.io/part-of: falcosidekick
+      app.kubernetes.io/version: 2.31.1
+      helm.sh/chart: falcosidekick-0.14.1
+      pod-template-hash: 7c5cd4cdc9
+    name: falco-falcosidekick-7c5cd4cdc9
+    namespace: falco
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: falco-falcosidekick
+      uid: 9c464589-7521-4afb-84ad-2f3ff31c83b4
+    resourceVersion: '1977'
+    uid: d16ab8a0-f66a-40ae-a84f-582c8fa83a24
+  spec:
+    replicas: 0
+    selector:
+      matchLabels:
+        app.kubernetes.io/component: core
+        app.kubernetes.io/instance: falco
+        app.kubernetes.io/name: falcosidekick
+        pod-template-hash: 7c5cd4cdc9
+    template:
+      metadata:
+        annotations:
+          checksum/config: 1db34e1168040bd9eb8056367df1db212dc3fc1ed40c17b13c6abf691e8fa3e9
+        labels:
+          app.kubernetes.io/component: core
+          app.kubernetes.io/instance: falco
+          app.kubernetes.io/managed-by: Helm
+          app.kubernetes.io/name: falcosidekick
+          app.kubernetes.io/part-of: falcosidekick
+          app.kubernetes.io/version: 2.31.1
+          helm.sh/chart: falcosidekick-0.14.1
+          pod-template-hash: 7c5cd4cdc9
+      spec:
+        containers:
+        - env:
+          - name: DEBUG
+            value: <redacted>
+          - name: CUSTOMFIELDS
+          - name: TEMPLATEDFIELDS
+          - name: CUSTOMTAGS
+          - name: OUTPUTFIELDFORMAT
+          - name: BRACKETREPLACER
+          - name: MUTUALTLSFILESPATH
+            value: <redacted>
+          - name: MUTUALTLSCLIENT_CERTFILE
+          - name: MUTUALTLSCLIENT_KEYFILE
+          - name: MUTUALTLSCLIENT_CACERTFILE
+          - name: TLSCLIENT_CACERTFILE
+          envFrom:
+          - secretRef:
+              name: falco-falcosidekick
+          image: docker.io/falcosecurity/falcosidekick:2.32.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ping
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: falcosidekick
+          ports:
+          - containerPort: 2801
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ping
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          fsGroup: 1234
+          runAsUser: 1234
+        serviceAccount: falco-falcosidekick
+        serviceAccountName: falco-falcosidekick
+        terminationGracePeriodSeconds: 30
+  status:
+    observedGeneration: 3
+    replicas: 0
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '2'
+      deployment.kubernetes.io/max-replicas: '3'
+      deployment.kubernetes.io/revision: '2'
+      meta.helm.sh/release-name: falco
+      meta.helm.sh/release-namespace: falco
+    creationTimestamp: '2026-10-23T21:31:28+00:00'
+    generation: 2
+    labels:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: falcosidekick
+      app.kubernetes.io/part-of: falcosidekick
+      app.kubernetes.io/version: 2.31.1
+      helm.sh/chart: falcosidekick-0.14.1
+      pod-template-hash: 84bc4c6495
+    name: falco-falcosidekick-84bc4c6495
+    namespace: falco
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: falco-falcosidekick
+      uid: 9c464589-7521-4afb-84ad-2f3ff31c83b4
+    resourceVersion: '6522'
+    uid: 33865b26-2055-45b9-b35e-f84adb991e96
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app.kubernetes.io/component: core
+        app.kubernetes.io/instance: falco
+        app.kubernetes.io/name: falcosidekick
+        pod-template-hash: 84bc4c6495
+    template:
+      metadata:
+        annotations:
+          checksum/config: 60f1c60d1c3d15f578f6f118ad74275f26a2a6c19897c7951f0f0195a10cad65
+        labels:
+          app.kubernetes.io/component: core
+          app.kubernetes.io/instance: falco
+          app.kubernetes.io/managed-by: Helm
+          app.kubernetes.io/name: falcosidekick
+          app.kubernetes.io/part-of: falcosidekick
+          app.kubernetes.io/version: 2.31.1
+          helm.sh/chart: falcosidekick-0.14.1
+          pod-template-hash: 84bc4c6495
+      spec:
+        containers:
+        - env:
+          - name: DEBUG
+            value: <redacted>
+          - name: CUSTOMFIELDS
+          - name: TEMPLATEDFIELDS
+          - name: CUSTOMTAGS
+          - name: OUTPUTFIELDFORMAT
+          - name: BRACKETREPLACER
+          - name: MUTUALTLSFILESPATH
+            value: <redacted>
+          - name: MUTUALTLSCLIENT_CERTFILE
+          - name: MUTUALTLSCLIENT_KEYFILE
+          - name: MUTUALTLSCLIENT_CACERTFILE
+          - name: TLSCLIENT_CACERTFILE
+          envFrom:
+          - secretRef:
+              name: falco-falcosidekick
+          image: docker.io/falcosecurity/falcosidekick:2.32.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ping
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: falcosidekick
+          ports:
+          - containerPort: 2801
+            name: http
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ping
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          fsGroup: 1234
+          runAsUser: 1234
+        serviceAccount: falco-falcosidekick
+        serviceAccountName: falco-falcosidekick
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 2
+    fullyLabeledReplicas: 2
+    observedGeneration: 2
+    readyReplicas: 2
+    replicas: 2
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+      objectset.rio.cattle.io/applied: H4sIAAAAAAAA/6xVUXPbNgz+Kzs8S7GVpI2ruz10cbb22nq+OulLz9ejKcjiTBEcCTnRcv7vO0i2Y7dJ2u72JJEEwA8f8IH3oLz5hCEacpCD8j4O1hkksDKugBzG6C21NTqGBGpkVShWkN+Dco5YsSEXZUmLv1BzRD4Jhk60YrZ4YmhgJAgkT57TrcOQLtcryGF1Fg9O1lnyyzvjil9fFwW574ZwqkbIQVPAwsUfMo9eafFZNQtMYxsZa9gkYNUCbZfUahRT5f3OpI8rv8EhY5Ro22svKeB4Mnvm2krFCnJYaDwdnZ2+Go2y7OL8TA3PRi/V4kU2LE/LlxdYXpyfng/1iwsB8k1Kz4COHrVADrg2Uss3JjKF9r2pDUM+TCCiRc0UxKhWrKv3z6W5kZAcFOOy7cKStcYtb3yhGPsQdzdOrZWxamER8myTALdekH08spV9rL3d+R200LNEbw6S0uRYGYchQv75HlRYyg+kmlwJCQyQ9WDL0kAqURqLME/A1GopiIJyusIwqE0IYpZujXffPDvJzk8uYOsxbaydkjW6hRzelhPiacDYS8CaNTqMcRpo0SVUKmObgNdVwFiRLSA/S6Bi9n8gy7lXLHUfVKgsV5CAp8CQj4YjKYqusKvxm+vrqVBlnGGj7BitameoyRUR8pfDBDwGQ8V+KxPnRmuM8eDmLAE2NVLDD4aP9ZFA6KncMzvtUL0421tvLQMxabKQw81YEH7HJWXtj92uLx91e5UdONbIwej4iOM8gYCqMP+JcvFsHxjPRtmPMv4t4ac/wXfASE3Q2LW2FQXGvvVrCtJS2cXwg4HO8O8GY3+qfSNHw2HdDdqtaW8pUkDdBMPtJTnGuy5NZS3dToNZG4tLvIpa2W4eQ14qGzEBrbxaGGvY9FBUUYhsJlfXX357Oxl/mV19/PT28kqUUgTycqashfmmJ/1PZ9uPRPy7sbgdNDmHBjcJrMk2NX6gxm37qJbf6Zb3AznCQfe50izT3hMebtjFfDrGQDeRqT4I1a3T70ScS/MULu6VPMZSNVZE7KjA2cE8PB7pFCEHa1xzJzXywVBHvFUxTnoAPRuptk1kDKkOho1WFqRMYW00vtZakpl8LTwmi2H3aH6+hxUKsMutf/fQxS6FBMiLpeCDqzsjTSIcYVmiZshhQjNdYdFYybwPI1mlgSyeHOcjygtkU2+Vw8cjzwWaJ0vLduaFx0tyMv7Nrr7dqJ799BNSq7vZCm97pWwveNeBPYZYUeSuuAncVuhuXFRsYmn6twXGNCHe5ys8/O94dquvuPuH3FOgdnheu/ZWtR2HfSvuJ2tplh+UFziGsT6q+O6RSnbDar8j2fVGEyrwDUl99lYPW3LdV3N984TWttP3Ac2xX7qXF3npTGX3Mn9Ob5v5ZrPZ/BsAAP//4tDbQz8KAAA
+      objectset.rio.cattle.io/id: ''
+      objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
+      objectset.rio.cattle.io/owner-name: coredns
+      objectset.rio.cattle.io/owner-namespace: kube-system
+    creationTimestamp: '2026-10-23T21:18:00+00:00'
+    generation: 1
+    labels:
+      k8s-app: kube-dns
+      pod-template-hash: 7cfb7bc9c7
+    name: coredns-7cfb7bc9c7
+    namespace: kube-system
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: coredns
+      uid: 33ebf834-91b5-4cf4-a26a-9f06466aa5db
+    resourceVersion: '6471'
+    uid: 1ebeeaf2-65f5-409c-81de-6a29ac4c2589
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        k8s-app: kube-dns
+        pod-template-hash: 7cfb7bc9c7
+    template:
+      metadata:
+        labels:
+          k8s-app: kube-dns
+          pod-template-hash: 7cfb7bc9c7
+      spec:
+        containers:
+        - args:
+          - -conf
+          - /etc/coredns/Corefile
+          image: rancher/mirrored-coredns-coredns:1.14.7
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: coredns
+          ports:
+          - containerPort: 53
+            name: dns
+            protocol: UDP
+          - containerPort: 53
+            name: dns-tcp
+            protocol: TCP
+          - containerPort: 9153
+            name: metrics
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ready
+              port: 8181
+              scheme: HTTP
+            periodSeconds: 2
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: 170Mi
+            requests:
+              cpu: 100m
+              memory: 70Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+              - NET_BIND_SERVICE
+              drop:
+              - all
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/coredns
+            name: config-volume
+            readOnly: true
+          - mountPath: /etc/coredns/custom
+            name: custom-config-volume
+            readOnly: true
+        dnsPolicy: Default
+        nodeSelector:
+          kubernetes.io/os: linux
+        priorityClassName: system-cluster-critical
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: coredns
+        serviceAccountName: coredns
+        terminationGracePeriodSeconds: 30
+        tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+          operator: Exists
+        topologySpreadConstraints:
+        - labelSelector:
+            matchLabels:
+              k8s-app: kube-dns
+          maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+        - labelSelector:
+            matchLabels:
+              k8s-app: kube-dns
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+        volumes:
+        - configMap:
+            defaultMode: 420
+            items:
+            - key: Corefile
+              path: Corefile
+            - key: NodeHosts
+              path: NodeHosts
+            name: coredns
+          name: config-volume
+        - configMap:
+            defaultMode: 420
+            name: coredns-custom
+            optional: true
+          name: custom-config-volume
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+      objectset.rio.cattle.io/applied: H4sIAAAAAAAA/5RU4U/7NhD9V6b7nKTtCl0VaR8qYNo0KBWIfUHVdHUuraljW/Y1I6ryv0/XpFA0Cvt9Shzfvbz37tl7QK//ohC1s5ADeh8H9QgS2GpbQA7X5I1rKrIMCVTEWCAj5HtAax0ja2ejLN3qhRRH4ixolylkNpRpN9ACAsnZffePpZCu6y3ksB3Hk516lPz0p7bFr7OicPZbCIsVQQ7GKTRpZBdwTf+rKXpU0rndrSiNTWSqoE3A4IrMl9I2GDeQw2g6LseXanJZlis1Hk4uJsNxeTEuR5fTYTFVkyn+XOCquBDQDyQ98ib1wdVazKcA3f4ZPtGTEjaBuvrftYhsbnWlGfJhApEMKXZBiipktbl9U4Den/9rK+AckGndHH7gjNF2/eQLZOrAXp8s1qgNrgxBPmoT4MYLx4cPtfKdKm+OfSdpMT/ApReqnGXUlkKE/FmWVYUSyefz9kXGIDlNU+VsqdeQwIBYDbpV/8heorOwTIBsfUDuh7K4v/57Pru7eVzMrm4ggRrNjn4LrhIypSZTPFD59r5AluEfNWbvk2vbdpmAriR/OQS0akNh8DnnvB5mw2z8C/QNi50xC2e0aiCHP8q540Wg2B2+77JTO7Or6M7tLHeOVfLa8zy14R2r+5B2ndAuhbh1BT2eREliGCwxxcOxiUJB292rTNsH7YLm5spgjPMOs0tsKjCpCpq1QiOjoVBrRTOlhNX8Ky1pX5tiVwwJsDMUjpfN8x62JAZd9fCHCyLeW9PIgfdSKdzh5lVHjtAme6CyJMWQw9w9qg0VOyOXQwdzoBqcoeyjVglgcCb1Bi19jrw82n7MqPh5h16M+++8+lC25/1v2/bfAAAA//8Fi9H0kQUAAA
+      objectset.rio.cattle.io/id: ''
+      objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
+      objectset.rio.cattle.io/owner-name: local-storage
+      objectset.rio.cattle.io/owner-namespace: kube-system
+    creationTimestamp: '2026-10-23T21:18:00+00:00'
+    generation: 1
+    labels:
+      app: local-path-provisioner
+      pod-template-hash: 77b9867795
+    name: local-path-provisioner-77b9867795
+    namespace: kube-system
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: local-path-provisioner
+      uid: 84373824-cb76-4719-bf2b-f00757d82489
+    resourceVersion: '6384'
+    uid: 15d78a63-a5f7-4741-8a6c-7a267402c19d
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: local-path-provisioner
+        pod-template-hash: 77b9867795
+    template:
+      metadata:
+        labels:
+          app: local-path-provisioner
+          pod-template-hash: 77b9867795
+      spec:
+        containers:
+        - command:
+          - local-path-provisioner
+          - start
+          - --config
+          - /etc/config/config.json
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          image: rancher/local-path-provisioner:v0.0.37
+          imagePullPolicy: IfNotPresent
+          name: local-path-provisioner
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /etc/config/
+            name: config-volume
+        dnsPolicy: ClusterFirst
+        nodeSelector:
+          kubernetes.io/os: linux
+        priorityClassName: system-node-critical
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: local-path-provisioner-service-account
+        serviceAccountName: local-path-provisioner-service-account
+        terminationGracePeriodSeconds: 30
+        tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+          operator: Exists
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: local-path-config
+          name: config-volume
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+      objectset.rio.cattle.io/applied: H4sIAAAAAAAA/5xVYW8aORD9K6f5vJvsEkialfiACFeqS1NU6J1OVYSMdwAfXtvnmaXhIv77aXaTlFxD0+sXtNjj5zfvjWfuQQXzO0Yy3kEBKgQ63eaQwMa4Egq4wmD9rkLHkECFrErFCop7UM55Vmy8I/nrF3+hZkI+icafaMVs8cT4UyMgkBzd918cxnS13UABmzM62NnmyS+/GVf2B2Xp3asQTlUIhVCMRlNKGLcY0/KQ/usAFJQWlE29wJR2xFjBPgGrFmibNDdvKFUhfHPRd9DXitZQAOYZdro9zM+we64uOj19WZZl2V1e4qJzdrnMuxcXF91lKfe9mAu060coUkAtBCNujXg5NsQ+7q5NZRiKLAFCi5p9lKBKsV5fv57UXoA5KsbVrgH31hq3+hRKxdgC3X1yaquMVQuLUOT7BHgXhN/HZ7GyjlWwj+cOCukHxD0qyUHi2jtWxmEkKD7fg4or+YA01Rg5LU3sn3IVIIE0JdR1xDT4yP086/SyZlUEtchpiLjEGLFMVVlGJEolI+q/c4zRKftukozunj7HnrjhdghRE6bOl5gSK66puakJaOmnEcnbWt5OP+9Rs8OWUm3CGmNKtWGk/ux6Oh8Nr8Yj+Z0O5n+8m43ng9F03umdz98O38+n48HZm27yNe7jD0X9By3vvHmM6/TOj6EdjTpAG44Hw/Ggk80nH67/zM+y3ktg3wTBbQKmUitxNyqn1xhPKxOjFwee211ss5PLE3HLmi06JJpEv2gKaqmMrSPO1hFp7W0JxVkCa+bwFln2g2J5hKdy8B9IoHGkaCJEf9JrbOprPJtNplJWxhk2yl6hVbspau9KguI8SyBgNL58WsrladVaI9HB5XkCbCr0NX8N/M67FjZt2T5V8aQh2FTn07lHtiF69tpbKGA2nMD+NoGIqjQ/pYic3P28JN8q0vkfgshDqKNGalvX3zUSN9861FBAnmVVM3YqH3dQwEX23rRNSV6w4d3QO8a7Jh9lrf8yiWZrLK5wRFrZZjpBsVSWsJXog7O7j97zr8biQ+8sONayW7sB3Xgnu8/WPhFGMSLL9glsva0rfO9r9+BXJZ+TBynb/vJgFldBug7sb8Uf6QbTgw4snSI6ZKRmABEUYI2r70TnEI1vkrOK6KZFa8m2TUVHw0YrKyZh3BqNA62Fx82R8mJvMT6O6s/3sEERc/gA04xXEmVkiAWJFI4wujNixj65B1wuUUtx3PipXmNZW+l3LUxDKXqLJ89zkkqO3qbBKocvI98+CtrSwirw7sqIPvuXZNzv9/8GAAD//16qvX+uCAAA
+      objectset.rio.cattle.io/id: ''
+      objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
+      objectset.rio.cattle.io/owner-name: metrics-server-deployment
+      objectset.rio.cattle.io/owner-namespace: kube-system
+    creationTimestamp: '2026-10-23T21:18:00+00:00'
+    generation: 1
+    labels:
+      k8s-app: metrics-server
+      pod-template-hash: 6dc596dfb8
+    name: metrics-server-6dc596dfb8
+    namespace: kube-system
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: metrics-server
+      uid: c1ea767c-d72a-4553-9df9-8450f9f4be84
+    resourceVersion: '6552'
+    uid: c1fc2493-e3f1-4a44-a9f9-1a340d385adb
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        k8s-app: metrics-server
+        pod-template-hash: 6dc596dfb8
+    template:
+      metadata:
+        labels:
+          k8s-app: metrics-server
+          pod-template-hash: 6dc596dfb8
+        name: metrics-server
+      spec:
+        containers:
+        - args:
+          - --cert-dir=/tmp
+          - --secure-port=10250
+          - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+          - --kubelet-use-node-status-port
+          - --metric-resolution=15s
+          - --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+          image: rancher/mirrored-metrics-server:v0.9.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /livez
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: metrics-server
+          ports:
+          - containerPort: 10250
+            name: https
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz
+              port: https
+              scheme: HTTPS
+            periodSeconds: 2
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 70Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /tmp
+            name: tmp-dir
+        dnsPolicy: ClusterFirst
+        nodeSelector:
+          kubernetes.io/os: linux
+        priorityClassName: system-node-critical
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: metrics-server
+        serviceAccountName: metrics-server
+        terminationGracePeriodSeconds: 30
+        tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+          operator: Exists
+        volumes:
+        - emptyDir: {}
+          name: tmp-dir
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 1
+    labels:
+      app: api
+      pod-template-hash: b94f577c9
+    name: api-b94f577c9
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: api
+      uid: ee23c00e-106f-4ded-b11e-c7e08c9bcd2b
+    resourceVersion: '8101'
+    uid: 7b75f9df-8b28-4c3b-8842-13ff5bfbd874
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: api
+        pod-template-hash: b94f577c9
+    template:
+      metadata:
+        labels:
+          app: api
+          pod-template-hash: b94f577c9
+      spec:
+        containers:
+        - envFrom:
+          - secretRef:
+              name: api-db-credentials
+          image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          name: api
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 20m
+              memory: 32Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 2
+    labels:
+      app: checkout
+      pod-template-hash: 6d9c48644
+    name: checkout-6d9c48644
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: checkout
+      uid: bb7d3705-620b-4f6a-8ae4-70bb47d2c966
+    resourceVersion: '8508'
+    uid: 1389f8ce-d0a2-4fc1-b320-b51b5992cbb2
+  spec:
+    replicas: 0
+    selector:
+      matchLabels:
+        app: checkout
+        pod-template-hash: 6d9c48644
+    template:
+      metadata:
+        labels:
+          app: checkout
+          pod-template-hash: 6d9c48644
+      spec:
+        containers:
+        - command:
+          - stress
+          - --vm
+          - '1'
+          - --vm-bytes
+          - 200M
+          - --vm-hang
+          - '1'
+          image: polinux/stress:1.0.4
+          imagePullPolicy: IfNotPresent
+          name: checkout
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+        terminationGracePeriodSeconds: 30
+  status:
+    observedGeneration: 2
+    replicas: 0
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '2'
+    creationTimestamp: '2026-10-24T23:06:24+00:00'
+    generation: 1
+    labels:
+      app: checkout
+      pod-template-hash: 7565bb5cc4
+    name: checkout-7565bb5cc4
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: checkout
+      uid: bb7d3705-620b-4f6a-8ae4-70bb47d2c966
+    resourceVersion: '8750'
+    uid: 481a3dc7-d0ab-4a39-b2b4-87766a393518
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: checkout
+        pod-template-hash: 7565bb5cc4
+    template:
+      metadata:
+        labels:
+          app: checkout
+          pod-template-hash: 7565bb5cc4
+      spec:
+        containers:
+        - command:
+          - stress
+          - --vm
+          - '1'
+          - --vm-bytes
+          - 200M
+          - --vm-hang
+          - '1'
+          image: polinux/stress:1.0.4
+          imagePullPolicy: IfNotPresent
+          name: checkout
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+        terminationGracePeriodSeconds: 30
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '2'
+    creationTimestamp: '2026-10-24T23:06:24+00:00'
+    generation: 1
+    labels:
+      app: frontend
+      pod-template-hash: 57cb4458c
+    name: frontend-57cb4458c
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: frontend
+      uid: 3b9adf4d-c9b9-42ff-956d-d30e5afb97c5
+    resourceVersion: '8180'
+    uid: 4ad00c3b-77e2-4b05-9ae1-13bd19cf342a
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: frontend
+        pod-template-hash: 57cb4458c
+    template:
+      metadata:
+        labels:
+          app: frontend
+          pod-template-hash: 57cb4458c
+      spec:
+        containers:
+        - image: nginx:1.27.99-typo
+          imagePullPolicy: IfNotPresent
+          name: frontend
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 20m
+              memory: 32Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 1
+    labels:
+      app: frontend
+      pod-template-hash: 6c968f8b4b
+    name: frontend-6c968f8b4b
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: frontend
+      uid: 3b9adf4d-c9b9-42ff-956d-d30e5afb97c5
+    resourceVersion: '8214'
+    uid: 9c1a02d6-20cf-4679-8a81-0ad731b2860c
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: frontend
+        pod-template-hash: 6c968f8b4b
+    template:
+      metadata:
+        labels:
+          app: frontend
+          pod-template-hash: 6c968f8b4b
+      spec:
+        containers:
+        - image: nginx:1.27
+          imagePullPolicy: IfNotPresent
+          name: frontend
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 20m
+              memory: 32Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 1
+    labels:
+      app: payment-api
+      pod-template-hash: f876794bc
+    name: payment-api-f876794bc
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: payment-api
+      uid: 338a7395-e701-4357-bb51-bb2859edb598
+    resourceVersion: '8209'
+    uid: 3f28b194-ac18-4d89-a9cb-372a157ae8ea
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: payment-api
+        pod-template-hash: f876794bc
+    template:
+      metadata:
+        labels:
+          app: payment-api
+          pod-template-hash: f876794bc
+      spec:
+        containers:
+        - image: nginx:1.19.0
+          imagePullPolicy: IfNotPresent
+          name: payment-api
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 20m
+              memory: 32Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: payment-api
+        serviceAccountName: payment-api
+        terminationGracePeriodSeconds: 30
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    generation: 1
+    labels:
+      app: reports
+      pod-template-hash: 5b7dd9dfbf
+    name: reports-5b7dd9dfbf
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: reports
+      uid: c747f9e7-cbe9-48ac-b34a-f1fb87795e4b
+    resourceVersion: '8683'
+    uid: 2961052c-e009-4ddf-b9d6-5375f6700d4f
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: reports
+        pod-template-hash: 5b7dd9dfbf
+    template:
+      metadata:
+        labels:
+          app: reports
+          pod-template-hash: 5b7dd9dfbf
+      spec:
+        containers:
+        - args:
+          - "echo \"reports starting\"\nwhile true; do\n  if ! wget -q -T 3 -O /dev/null\
+            \ \"$SEARCH_URL\"; then\n    echo \"ERROR connect ECONNREFUSED search.data:9200\"\
+            \n    exit 1\n  fi\n  sleep 10\ndone\n"
+          command:
+          - sh
+          - -c
+          env:
+          - name: SEARCH_URL
+            value: <redacted>
+          - name: REDIS_URL
+            value: <redacted>
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          name: reports
+          resources:
+            limits:
+              memory: 32Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+        terminationGracePeriodSeconds: 30
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '2'
+      deployment.kubernetes.io/revision: '1'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 1
+    labels:
+      app: worker
+      pod-template-hash: 7b45769cd8
+    name: worker-7b45769cd8
+    namespace: shop
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: worker
+      uid: 4906a506-30f3-4c87-b218-f881d2d2aef0
+    resourceVersion: '8102'
+    uid: 5445abac-4813-4259-9f8f-eab4d937b3fd
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: worker
+        pod-template-hash: 7b45769cd8
+    template:
+      metadata:
+        labels:
+          app: worker
+          pod-template-hash: 7b45769cd8
+      spec:
+        containers:
+        - command:
+          - sleep
+          - infinity
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          name: worker
+          resources:
+            limits:
+              memory: 64Gi
+            requests:
+              cpu: 50m
+              memory: 64Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+  status:
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '1'
+      deployment.kubernetes.io/revision: '2'
+      meta.helm.sh/release-name: trivy-operator
+      meta.helm.sh/release-namespace: trivy-system
+    creationTimestamp: '2026-10-23T21:36:11+00:00'
+    generation: 1
+    labels:
+      app.kubernetes.io/instance: trivy-operator
+      app.kubernetes.io/name: trivy-operator
+      pod-template-hash: 5649bd984b
+    name: trivy-operator-5649bd984b
+    namespace: trivy-system
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: trivy-operator
+      uid: 8d3b94d7-0e39-46da-88ef-be38fde666c5
+    resourceVersion: '6526'
+    uid: 4615db07-c93d-47f7-8ffd-f9a08f250a5d
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app.kubernetes.io/instance: trivy-operator
+        app.kubernetes.io/name: trivy-operator
+        pod-template-hash: 5649bd984b
+    template:
+      metadata:
+        annotations:
+          checksum/config: d27273e0df467140f1f082bc75896266f3554b78174c2ecacb0924081d2dac25
+        labels:
+          app.kubernetes.io/instance: trivy-operator
+          app.kubernetes.io/name: trivy-operator
+          pod-template-hash: 5649bd984b
+      spec:
+        automountServiceAccountToken: true
+        containers:
+        - env:
+          - name: OPERATOR_NAMESPACE
+            value: <redacted>
+          - name: OPERATOR_TARGET_NAMESPACES
+          - name: OPERATOR_EXCLUDE_NAMESPACES
+          - name: OPERATOR_TARGET_WORKLOADS
+            value: <redacted>
+          - name: OPERATOR_SERVICE_ACCOUNT
+            value: <redacted>
+          envFrom:
+          - configMapRef:
+              name: trivy-operator-config
+          image: mirror.gcr.io/aquasec/trivy-operator:0.35.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 10
+            httpGet:
+              path: /healthz/
+              port: probes
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: trivy-operator
+          ports:
+          - containerPort: 8080
+            name: metrics
+            protocol: TCP
+          - containerPort: 9090
+            name: probes
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz/
+              port: probes
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources: {}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /tmp
+            name: cache-policies
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: trivy-operator
+        serviceAccountName: trivy-operator
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: cache-policies
+  status:
+    availableReplicas: 1
+    fullyLabeledReplicas: 1
+    observedGeneration: 1
+    readyReplicas: 1
+    replicas: 1
+    terminatingReplicas: 0
+- kind: ReplicaSet
+  metadata:
+    annotations:
+      deployment.kubernetes.io/desired-replicas: '1'
+      deployment.kubernetes.io/max-replicas: '1'
+      deployment.kubernetes.io/revision: '1'
+      meta.helm.sh/release-name: trivy-operator
+      meta.helm.sh/release-namespace: trivy-system
+    creationTimestamp: '2026-10-23T21:19:44+00:00'
+    generation: 2
+    labels:
+      app.kubernetes.io/instance: trivy-operator
+      app.kubernetes.io/name: trivy-operator
+      pod-template-hash: 6b9585755d
+    name: trivy-operator-6b9585755d
+    namespace: trivy-system
+    ownerReferences:
+    - apiVersion: apps/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Deployment
+      name: trivy-operator
+      uid: 8d3b94d7-0e39-46da-88ef-be38fde666c5
+    resourceVersion: '2288'
+    uid: 98e3e1ed-2e14-4443-b5df-8ec7ba5fd735
+  spec:
+    replicas: 0
+    selector:
+      matchLabels:
+        app.kubernetes.io/instance: trivy-operator
+        app.kubernetes.io/name: trivy-operator
+        pod-template-hash: 6b9585755d
+    template:
+      metadata:
+        annotations:
+          checksum/config: a9eb468d7d2e49524ed0dc2fbef476eb09b78862c5b00d5cfe91c9514807d10d
+        labels:
+          app.kubernetes.io/instance: trivy-operator
+          app.kubernetes.io/name: trivy-operator
+          pod-template-hash: 6b9585755d
+      spec:
+        automountServiceAccountToken: true
+        containers:
+        - env:
+          - name: OPERATOR_NAMESPACE
+            value: <redacted>
+          - name: OPERATOR_TARGET_NAMESPACES
+          - name: OPERATOR_EXCLUDE_NAMESPACES
+          - name: OPERATOR_TARGET_WORKLOADS
+            value: <redacted>
+          - name: OPERATOR_SERVICE_ACCOUNT
+            value: <redacted>
+          envFrom:
+          - configMapRef:
+              name: trivy-operator-config
+          image: mirror.gcr.io/aquasec/trivy-operator:0.35.0
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 10
+            httpGet:
+              path: /healthz/
+              port: probes
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: trivy-operator
+          ports:
+          - containerPort: 8080
+            name: metrics
+            protocol: TCP
+          - containerPort: 9090
+            name: probes
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /readyz/
+              port: probes
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources: {}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /tmp
+            name: cache-policies
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: trivy-operator
+        serviceAccountName: trivy-operator
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: cache-policies
+  status:
+    observedGeneration: 2
+    replicas: 0
+    terminatingReplicas: 0
+kind: List

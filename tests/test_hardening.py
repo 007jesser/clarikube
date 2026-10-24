@@ -154,3 +154,32 @@ def test_system_namespaces_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings.from_env().system_namespaces == frozenset({"a", "b"})
     monkeypatch.delenv("KUBEPILOT_SYSTEM_NAMESPACES")
     assert "falco" in Settings.from_env().system_namespaces
+
+
+def test_capture_keeps_bare_addresses_but_redacts_everything_else() -> None:
+    from kubepilot.redact import REDACTED, redact_objects
+
+    pod = {
+        "spec": {
+            "containers": [
+                {
+                    "env": [
+                        {"name": "SEARCH_URL", "value": "http://search.data:9200"},
+                        {"name": "KAFKA", "value": "events-kafka-bootstrap.data.svc:9092"},
+                        {"name": "DB_URL", "value": "postgres://app:s3cret@pg-rw.data:5432/app"},
+                        {"name": "API_TOKEN", "value": "redis.data:6379"},
+                        {"name": "MODE", "value": "fast and loud"},
+                        {"name": "Q", "value": "http://x.data:80/?key=abc"},
+                        {"name": "APP_X", "value": "Tr0ub4dor"},
+                    ]
+                }
+            ]
+        }
+    }
+    env = redact_objects([pod])[0]["spec"]["containers"][0]["env"]
+    vals = {e["name"]: e["value"] for e in env}
+    assert vals["SEARCH_URL"] == "http://search.data:9200"
+    assert vals["KAFKA"] == "events-kafka-bootstrap.data.svc:9092"
+    assert vals["DB_URL"] == REDACTED and vals["API_TOKEN"] == REDACTED
+    assert vals["MODE"] == REDACTED and vals["Q"] == REDACTED
+    assert vals["APP_X"] == REDACTED  # a single word may be a password

@@ -1,0 +1,543 @@
+apiVersion: v1
+items:
+- kind: Job
+  metadata:
+    annotations:
+      trivy-operator.container-images: '{"rabbitmq":"rabbitmq:3.13-management-alpine"}'
+    creationTimestamp: '2026-10-24T23:07:26+00:00'
+    generation: 1
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      resource-spec-hash: 84c7b69d5f
+      trivy-operator.resource.kind: StatefulSet
+      trivy-operator.resource.name: queue
+      trivy-operator.resource.namespace: data
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-554bb8c8
+    namespace: trivy-system
+    resourceVersion: '8599'
+    uid: fa8c5757-d236-413f-9364-8602fe861a24
+  spec:
+    activeDeadlineSeconds: 900
+    backoffLimit: 0
+    completionMode: NonIndexed
+    completions: 1
+    manualSelector: false
+    parallelism: 1
+    podReplacementPolicy: TerminatingOrFailed
+    selector:
+      matchLabels:
+        batch.kubernetes.io/controller-uid: fa8c5757-d236-413f-9364-8602fe861a24
+    suspend: false
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/managed-by: trivy-operator
+          batch.kubernetes.io/controller-uid: fa8c5757-d236-413f-9364-8602fe861a24
+          batch.kubernetes.io/job-name: scan-vulnerabilityreport-554bb8c8
+          controller-uid: fa8c5757-d236-413f-9364-8602fe861a24
+          job-name: scan-vulnerabilityreport-554bb8c8
+          resource-spec-hash: 84c7b69d5f
+          trivy-operator.resource.kind: StatefulSet
+          trivy-operator.resource.name: queue
+          trivy-operator.resource.namespace: data
+          vulnerabilityReport.scanner: Trivy
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                  - linux
+        automountServiceAccountToken: false
+        containers:
+        - args:
+          - -c
+          - <redacted>
+          command:
+          - /bin/sh
+          env:
+          - name: TRIVY_SEVERITY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.severity
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_IGNORE_UNFIXED
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.ignoreUnfixed
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_OFFLINE_SCAN
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.offlineScan
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_JAVA_DB_REPOSITORY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.javaDbRepository
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TIMEOUT
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.timeout
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_FILES
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipFiles
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_DIRS
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipDirs
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTP_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTPS_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpsProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: NO_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.noProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN_HEADER
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.serverTokenHeader
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverToken
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_CUSTOM_HEADERS
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverCustomHeaders
+                name: trivy-operator-trivy-config
+                optional: true
+          image: mirror.gcr.io/aquasec/trivy:0.75.0
+          imagePullPolicy: IfNotPresent
+          name: rabbitmq
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500M
+            requests:
+              cpu: 100m
+              memory: 100M
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          volumeMounts:
+          - mountPath: /tmp
+            name: tmp
+          - mountPath: /tmp/scan
+            name: scanresult
+        dnsPolicy: ClusterFirst
+        restartPolicy: Never
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: trivy-operator
+        serviceAccountName: trivy-operator
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: tmp
+        - emptyDir: {}
+          name: scanresult
+  status:
+    active: 1
+    ready: 1
+    startTime: '2026-10-24T23:07:26+00:00'
+    terminating: 0
+    uncountedTerminatedPods: {}
+- kind: Job
+  metadata:
+    annotations:
+      trivy-operator.container-images: '{"payment-api":"nginx:1.19.0"}'
+    creationTimestamp: '2026-10-24T23:06:54+00:00'
+    generation: 1
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      resource-spec-hash: 569d9f59f6
+      trivy-operator.resource.kind: ReplicaSet
+      trivy-operator.resource.name: payment-api-f876794bc
+      trivy-operator.resource.namespace: shop
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-6595dff849
+    namespace: trivy-system
+    resourceVersion: '8496'
+    uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+  spec:
+    activeDeadlineSeconds: 900
+    backoffLimit: 0
+    completionMode: NonIndexed
+    completions: 1
+    manualSelector: false
+    parallelism: 1
+    podReplacementPolicy: TerminatingOrFailed
+    selector:
+      matchLabels:
+        batch.kubernetes.io/controller-uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+    suspend: false
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/managed-by: trivy-operator
+          batch.kubernetes.io/controller-uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+          batch.kubernetes.io/job-name: scan-vulnerabilityreport-6595dff849
+          controller-uid: e05475f2-4af2-4d24-a50e-8f2bf6fce139
+          job-name: scan-vulnerabilityreport-6595dff849
+          resource-spec-hash: 569d9f59f6
+          trivy-operator.resource.kind: ReplicaSet
+          trivy-operator.resource.name: payment-api-f876794bc
+          trivy-operator.resource.namespace: shop
+          vulnerabilityReport.scanner: Trivy
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                  - linux
+        automountServiceAccountToken: false
+        containers:
+        - args:
+          - -c
+          - <redacted>
+          command:
+          - /bin/sh
+          env:
+          - name: TRIVY_SEVERITY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.severity
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_IGNORE_UNFIXED
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.ignoreUnfixed
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_OFFLINE_SCAN
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.offlineScan
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_JAVA_DB_REPOSITORY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.javaDbRepository
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TIMEOUT
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.timeout
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_FILES
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipFiles
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_DIRS
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipDirs
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTP_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTPS_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpsProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: NO_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.noProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN_HEADER
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.serverTokenHeader
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverToken
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_CUSTOM_HEADERS
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverCustomHeaders
+                name: trivy-operator-trivy-config
+                optional: true
+          image: mirror.gcr.io/aquasec/trivy:0.75.0
+          imagePullPolicy: IfNotPresent
+          name: payment-api
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500M
+            requests:
+              cpu: 100m
+              memory: 100M
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          volumeMounts:
+          - mountPath: /tmp
+            name: tmp
+          - mountPath: /tmp/scan
+            name: scanresult
+        dnsPolicy: ClusterFirst
+        restartPolicy: Never
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: trivy-operator
+        serviceAccountName: trivy-operator
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: tmp
+        - emptyDir: {}
+          name: scanresult
+  status:
+    active: 1
+    ready: 1
+    startTime: '2026-10-24T23:06:54+00:00'
+    terminating: 0
+    uncountedTerminatedPods: {}
+- kind: Job
+  metadata:
+    annotations:
+      trivy-operator.container-images: '{"api":"nginx:1.27"}'
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    generation: 1
+    labels:
+      app.kubernetes.io/managed-by: trivy-operator
+      resource-spec-hash: 86b6dc6c57
+      trivy-operator.resource.kind: ReplicaSet
+      trivy-operator.resource.name: api-b94f577c9
+      trivy-operator.resource.namespace: shop
+      vulnerabilityReport.scanner: Trivy
+    name: scan-vulnerabilityreport-65f876f44d
+    namespace: trivy-system
+    resourceVersion: '8220'
+    uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+  spec:
+    activeDeadlineSeconds: 900
+    backoffLimit: 0
+    completionMode: NonIndexed
+    completions: 1
+    manualSelector: false
+    parallelism: 1
+    podReplacementPolicy: TerminatingOrFailed
+    selector:
+      matchLabels:
+        batch.kubernetes.io/controller-uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+    suspend: false
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/managed-by: trivy-operator
+          batch.kubernetes.io/controller-uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+          batch.kubernetes.io/job-name: scan-vulnerabilityreport-65f876f44d
+          controller-uid: ab6da710-6db9-4480-9a5c-c607fdf96304
+          job-name: scan-vulnerabilityreport-65f876f44d
+          resource-spec-hash: 86b6dc6c57
+          trivy-operator.resource.kind: ReplicaSet
+          trivy-operator.resource.name: api-b94f577c9
+          trivy-operator.resource.namespace: shop
+          vulnerabilityReport.scanner: Trivy
+      spec:
+        affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+              - matchExpressions:
+                - key: kubernetes.io/os
+                  operator: In
+                  values:
+                  - linux
+        automountServiceAccountToken: false
+        containers:
+        - args:
+          - -c
+          - <redacted>
+          command:
+          - /bin/sh
+          env:
+          - name: TRIVY_SEVERITY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.severity
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_IGNORE_UNFIXED
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.ignoreUnfixed
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_OFFLINE_SCAN
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.offlineScan
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_JAVA_DB_REPOSITORY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.javaDbRepository
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TIMEOUT
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.timeout
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_FILES
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipFiles
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_SKIP_DIRS
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.skipDirs
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTP_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: HTTPS_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.httpsProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: NO_PROXY
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.noProxy
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN_HEADER
+            valueFrom:
+              configMapKeyRef:
+                key: trivy.serverTokenHeader
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverToken
+                name: trivy-operator-trivy-config
+                optional: true
+          - name: TRIVY_CUSTOM_HEADERS
+            valueFrom:
+              secretKeyRef:
+                key: trivy.serverCustomHeaders
+                name: trivy-operator-trivy-config
+                optional: true
+          image: mirror.gcr.io/aquasec/trivy:0.75.0
+          imagePullPolicy: IfNotPresent
+          name: api
+          resources:
+            limits:
+              cpu: 500m
+              memory: 500M
+            requests:
+              cpu: 100m
+              memory: 100M
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: FallbackToLogsOnError
+          volumeMounts:
+          - mountPath: /tmp
+            name: tmp
+          - mountPath: /tmp/scan
+            name: scanresult
+        dnsPolicy: ClusterFirst
+        restartPolicy: Never
+        schedulerName: default-scheduler
+        securityContext: {}
+        serviceAccount: trivy-operator
+        serviceAccountName: trivy-operator
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - emptyDir: {}
+          name: tmp
+        - emptyDir: {}
+          name: scanresult
+  status:
+    active: 1
+    ready: 1
+    startTime: '2026-10-24T23:06:23+00:00'
+    terminating: 0
+    uncountedTerminatedPods: {}
+kind: List

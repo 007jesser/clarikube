@@ -1,0 +1,125 @@
+apiVersion: v1
+items:
+- kind: Namespace
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    labels:
+      kubernetes.io/metadata.name: batch
+    name: batch
+    resourceVersion: '8042'
+    uid: 4b60d656-da04-481a-847a-75fac14c68fa
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    labels:
+      kubernetes.io/metadata.name: data
+    name: data
+    resourceVersion: '8222'
+    uid: fdddad58-afee-45d7-b1cf-e50d61a68ace
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:17:52+00:00'
+    labels:
+      kubernetes.io/metadata.name: default
+    name: default
+    resourceVersion: '16'
+    uid: 9c42a032-830f-455b-828c-b30965412c1c
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:19:41+00:00'
+    labels:
+      kubernetes.io/metadata.name: falco
+      name: falco
+    name: falco
+    resourceVersion: '536'
+    uid: 37bab787-a9c4-4a6e-a20d-c85b969182fa
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:17:52+00:00'
+    labels:
+      kubernetes.io/metadata.name: kube-node-lease
+    name: kube-node-lease
+    resourceVersion: '18'
+    uid: 9661b51b-0ec5-4bf4-a88e-95d5a00e98f3
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:17:52+00:00'
+    labels:
+      kubernetes.io/metadata.name: kube-public
+    name: kube-public
+    resourceVersion: '14'
+    uid: a6d39374-827a-449b-aaa2-bd7599debab5
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:17:52+00:00'
+    labels:
+      kubernetes.io/metadata.name: kube-system
+    name: kube-system
+    resourceVersion: '7'
+    uid: 76a8f0d4-7ffd-4a49-b21a-da0cc3fadac1
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:23+00:00'
+    labels:
+      kubernetes.io/metadata.name: shop
+    name: shop
+    resourceVersion: '8044'
+    uid: 7dc093e9-6182-4f7f-b6cb-0c6f716f7a47
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+- kind: Namespace
+  metadata:
+    creationTimestamp: '2026-10-23T21:19:44+00:00'
+    labels:
+      kubernetes.io/metadata.name: trivy-system
+      name: trivy-system
+    name: trivy-system
+    resourceVersion: '623'
+    uid: c2bde28c-796c-455c-8458-c5846b4bae9b
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+kind: List

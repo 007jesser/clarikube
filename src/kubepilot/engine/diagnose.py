@@ -164,22 +164,30 @@ def _rule_oom(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollout: Rollout
 
 
 def _rule_crashloop(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollout: Rollout) -> list[Finding]:
-    items = [
-        (p, c)
-        for p, c in _container_iter(pods)
-        if c.state.reason == "CrashLoopBackOff" and c.last_state.reason != "OOMKilled"
-    ]
+    def crashing(c: Container) -> bool:
+        if c.state.reason == "CrashLoopBackOff":
+            return c.last_state.reason != "OOMKilled"
+        # Between back-offs the container shows as terminated (kubectl: "Error"); seen on a real k3s lab.
+        return (
+            c.state.state == "terminated"
+            and c.state.reason != "OOMKilled"
+            and (c.state.exit_code or 0) != 0
+            and c.restart_count >= 2
+        )
+
+    items = [(p, c) for p, c in _container_iter(pods) if crashing(c)]
     if not items:
         return []
     p, c = items[0]
-    code = c.last_state.exit_code
+    code = c.last_state.exit_code if c.state.state != "terminated" else c.state.exit_code
     meaning = EXIT_CODES.get(code, "non-zero exit — check the application logs") if code is not None else "unknown"
     evidence = [
         Evidence(
             source="pod-status",
-            detail=f"{pp.name}/{cc.name}: CrashLoopBackOff, last exit code {cc.last_state.exit_code} "
-            f"({clean(cc.last_state.reason, 60)}), restarts={cc.restart_count}",
-            at=cc.last_state.finished_at,
+            detail=f"{pp.name}/{cc.name}: {cc.state.reason or 'CrashLoopBackOff'}, last exit code "
+            f"{cc.last_state.exit_code if cc.state.state != 'terminated' else cc.state.exit_code} "
+            f"({clean(cc.last_state.reason or cc.state.reason, 60)}), restarts={cc.restart_count}",
+            at=cc.last_state.finished_at or cc.state.finished_at,
         )
         for pp, cc in items
     ]
@@ -359,8 +367,28 @@ def _rule_unschedulable(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollou
     ]
 
 
+PROBE_STARTUP_GRACE = timedelta(seconds=90)
+PROBE_STALE = timedelta(minutes=15)
+
+
 def _rule_probes(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollout: Rollout) -> list[Finding]:
     unhealthy = _events(snap, wl, ["Unhealthy"])
+    all_ready = bool(pods) and all(c.ready for p in pods for c in p.app_containers)
+    if all_ready:
+        # Probe failures while a container was starting (or long ago) are noise once every pod is Ready:
+        # seen on a real k3s lab after a VM reboot (CoreDNS/metrics-server "connection refused" at startup).
+        starts = [c.state.started_at for p in pods for c in p.app_containers if c.state.started_at]
+        latest_start = max(starts) if starts else None
+
+        def relevant(e: Event) -> bool:
+            seen = e.last_seen or e.first_seen
+            if seen is None:
+                return True
+            if snap.now - seen > PROBE_STALE:
+                return False
+            return not (latest_start and seen <= latest_start + PROBE_STARTUP_GRACE)
+
+        unhealthy = [e for e in unhealthy if relevant(e)]
     readiness = [e for e in unhealthy if "readiness probe" in e.message.lower()]
     liveness = [e for e in unhealthy if "liveness probe" in e.message.lower()]
     out = []

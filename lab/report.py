@@ -119,8 +119,13 @@ def main() -> int:
     # diagnose each unhealthy workload, like an agent would after cluster_health
     failing_pods: list[tuple[str, str, str]] = []
     diagnoses = []
-    for row in health.get("reliability_issues", [])[:8]:
-        kind, ns, name = row["workload"].split("/", 2)
+    seen_wl: list[str] = []
+    for row in health.get("reliability_issues", []):
+        if row["workload"] not in seen_wl:
+            seen_wl.append(row["workload"])
+    for key in seen_wl[:12]:
+        row = {"workload": key}
+        _kind, ns, name = row["workload"].split("/", 2)
         d, t, err = timed(kp.diagnose_workload, ns, name)
         diagnoses.append(
             {
@@ -168,11 +173,12 @@ def main() -> int:
 
 def render(rep: dict[str, Any]) -> str:
     c = rep.get("cluster", {})
+    nodes = c.get("nodes") or {}
     cc = rep.get("context_comparison", {})
     lines = [
         f"# kubepilot lab report ({rep['generated_at'][:16]})",
         "",
-        f"Cluster: {(c.get('nodes') or {}).get('total')} node(s), not ready: {(c.get('nodes') or {}).get('not_ready')} · "
+        f"Cluster: {nodes.get('total')} node(s), not ready: {nodes.get('not_ready')} · "
         f"{c.get('workloads')} workloads · {c.get('pods')} pods",
         "",
         "## Speed and context",

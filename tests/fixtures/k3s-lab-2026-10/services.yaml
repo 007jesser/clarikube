@@ -1,0 +1,375 @@
+apiVersion: v1
+items:
+- kind: Service
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    name: cache
+    namespace: data
+    resourceVersion: '8226'
+    uid: 10897bcd-ba80-48cf-8b32-88e8a20cc724
+  spec:
+    clusterIP: 10.43.239.10
+    clusterIPs:
+    - 10.43.239.10
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+    selector:
+      app.kubernetes.io/instance: cache
+      app.kubernetes.io/name: redis
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    name: cache-public
+    namespace: data
+    resourceVersion: '8231'
+    uid: f91d9613-9cb4-4f42-a8a7-cb3eb48c4d83
+  spec:
+    clusterIP: 10.43.248.116
+    clusterIPs:
+    - 10.43.248.116
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: redis
+      nodePort: 30126
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+    selector:
+      app.kubernetes.io/instance: cache
+      app.kubernetes.io/name: redis
+    sessionAffinity: None
+    type: NodePort
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    name: queue
+    namespace: data
+    resourceVersion: '8240'
+    uid: b94286be-03e6-4295-b80c-6793344a7edd
+  spec:
+    clusterIP: 10.43.179.221
+    clusterIPs:
+    - 10.43.179.221
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: amqp
+      port: 5672
+      protocol: TCP
+      targetPort: 5672
+    selector:
+      app.kubernetes.io/instance: queue
+      app.kubernetes.io/name: rabbitmq
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    name: queue-mgmt
+    namespace: data
+    resourceVersion: '8246'
+    uid: 4a4b8c5e-e5d0-4f4a-927c-c64f71e7d36b
+  spec:
+    clusterIP: 10.43.53.83
+    clusterIPs:
+    - 10.43.53.83
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: management
+      nodePort: 30489
+      port: 15672
+      protocol: TCP
+      targetPort: 15672
+    selector:
+      app.kubernetes.io/instance: queue
+      app.kubernetes.io/name: rabbitmq
+    sessionAffinity: None
+    type: NodePort
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations: {}
+    creationTimestamp: '2026-10-24T23:06:26+00:00'
+    name: search
+    namespace: data
+    resourceVersion: '8252'
+    uid: d94c6083-8e41-4f77-9fbd-d11072385b92
+  spec:
+    clusterIP: 10.43.244.218
+    clusterIPs:
+    - 10.43.244.218
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 9200
+      protocol: TCP
+      targetPort: 9200
+    selector:
+      app.kubernetes.io/instance: search
+      app.kubernetes.io/name: opensearch
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    creationTimestamp: '2026-10-23T21:17:53+00:00'
+    labels:
+      component: apiserver
+      provider: kubernetes
+    name: kubernetes
+    namespace: default
+    resourceVersion: '203'
+    uid: 85351f40-3975-4991-bd46-f22d2d1b9722
+  spec:
+    clusterIP: 10.43.0.1
+    clusterIPs:
+    - 10.43.0.1
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 6443
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: falco
+      meta.helm.sh/release-namespace: falco
+      prometheus.io/scrape: 'true'
+    creationTimestamp: '2026-10-23T21:19:41+00:00'
+    labels:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: falcosidekick
+      app.kubernetes.io/part-of: falcosidekick
+      app.kubernetes.io/version: 2.31.1
+      helm.sh/chart: falcosidekick-0.14.1
+    name: falco-falcosidekick
+    namespace: falco
+    resourceVersion: '548'
+    uid: c9ea85d4-ed5e-420c-9ed0-1b21dc10058a
+  spec:
+    clusterIP: 10.43.150.37
+    clusterIPs:
+    - 10.43.150.37
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 2801
+      protocol: TCP
+      targetPort: http
+    - name: http-notls
+      port: 2810
+      protocol: TCP
+      targetPort: http-notls
+    selector:
+      app.kubernetes.io/component: core
+      app.kubernetes.io/instance: falco
+      app.kubernetes.io/name: falcosidekick
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations:
+      objectset.rio.cattle.io/applied: H4sIAAAAAAAA/4ySQYvbMBCF/0p5Z9m142TjFfRQdimUQgmk7aXsQZYnG9W2JKRJSgj+70WJl00b0vZm8958vHmjI5Q33yhE4ywk9iUEOmNbSKwp7I0mCAzEqlWsII9Q1jpWbJyN6dc1P0hzJM6DcblWzD3lxr01iQBxU3c/LYXsed9BoqvihbIvxZtPxrbv3rets/9EWDUQJLQL1Nr4X/bolU4z3a6hLB4i0wABH9xAvKVdTG7vAkPivlxUV1rUQfkE4LAjjAK9aqg/1dHVMVPev8DPidJnsMR0mtb9LjKFLE71Tpg/bdNeDy7Q4+f1X/baqriFRKNpVlez+7ouy+W8UkVV36lmURab2eZuSZvlfDYv9GKZ8k7si4i3ahkFoiedVptyf1xBoizyeZUXeVlAvAoR8vul9CRg/Ac1mP6wcr3Rh/SojH3uac1Kd6lXFzhNHV8indOcy19Up+LZaddD4uvjCqO4dGas/S33l4ff3ANxMPqVne567X8SiNSTZhduHHMcx18BAAD//5X9LCMyAwAA
+      objectset.rio.cattle.io/id: ''
+      objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
+      objectset.rio.cattle.io/owner-name: coredns
+      objectset.rio.cattle.io/owner-namespace: kube-system
+      prometheus.io/port: '9153'
+      prometheus.io/scrape: 'true'
+    creationTimestamp: '2026-10-23T21:17:56+00:00'
+    labels:
+      k8s-app: kube-dns
+      kubernetes.io/cluster-service: 'true'
+      kubernetes.io/name: CoreDNS
+      objectset.rio.cattle.io/hash: bce283298811743a0386ab510f2f67ef74240c57
+    name: kube-dns
+    namespace: kube-system
+    resourceVersion: '279'
+    uid: 4b2ec494-9724-41a4-b779-4255e14a14e2
+  spec:
+    clusterIP: 10.43.0.10
+    clusterIPs:
+    - 10.43.0.10
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: dns
+      port: 53
+      protocol: UDP
+      targetPort: 53
+    - name: dns-tcp
+      port: 53
+      protocol: TCP
+      targetPort: 53
+    - name: metrics
+      port: 9153
+      protocol: TCP
+      targetPort: 9153
+    selector:
+      k8s-app: kube-dns
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations:
+      objectset.rio.cattle.io/applied: H4sIAAAAAAAA/4SQQWsbMRCF/0p5Z9nNep04FfRQWnopBUNKL6WHWe04VleWhGa8xZj970UbFxLaJCchvZn3vqczKPvvXMSnCIuxgcHgYw+LOy6jdwyDAyv1pAR7BsWYlNSnKPWaul/sVFiXxaelI9XAS5/e+uoA86yefkcui/txgMXQyiNlbMybLz727z/0fYqvWkQ6MGxFLN7JQriMXObjgf31bcnkqsVw7HghJ1E+YDII1HGYO1ahRFaWuujCUfRRhIWWY016Onbh+vqE6wWePckeFnTdt527uWrc7abhZtXuqF11q83uev2uu2HabK46t1tTJfxvdTy8P1NKMrtayefPdPDhtE3BuxMstoV3XD4dKdwpuQEGORUV2B/nvzl71SwXAXa9bg1ySZpcCrD49nELA6Vyz7qdJy4L008D4cBOU5l/81YWlPO/4NM0/QkAAP//sKxN444CAAA
+      objectset.rio.cattle.io/id: ''
+      objectset.rio.cattle.io/owner-gvk: k3s.cattle.io/v1, Kind=Addon
+      objectset.rio.cattle.io/owner-name: metrics-server-service
+      objectset.rio.cattle.io/owner-namespace: kube-system
+    creationTimestamp: '2026-10-23T21:17:56+00:00'
+    labels:
+      kubernetes.io/cluster-service: 'true'
+      kubernetes.io/name: Metrics-server
+      objectset.rio.cattle.io/hash: a5d3bc601c871e123fa32b27f549b6ea770bcf4a
+    name: metrics-server
+    namespace: kube-system
+    resourceVersion: '324'
+    uid: 1b3afc71-a67d-4c82-9c61-37977b1370d6
+  spec:
+    clusterIP: 10.43.197.212
+    clusterIPs:
+    - 10.43.197.212
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: PreferDualStack
+    ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: https
+    selector:
+      k8s-app: metrics-server
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: trivy-operator
+      meta.helm.sh/release-namespace: trivy-system
+    creationTimestamp: '2026-10-23T21:19:44+00:00'
+    labels:
+      app.kubernetes.io/instance: trivy-operator
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: trivy-operator
+      app.kubernetes.io/version: 0.35.0
+      helm.sh/chart: trivy-operator-0.37.0
+    name: trivy-operator
+    namespace: trivy-system
+    resourceVersion: '648'
+    uid: 48c469c2-3101-4511-8df3-a119f22a9a89
+  spec:
+    clusterIP: None
+    clusterIPs:
+    - None
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - appProtocol: TCP
+      name: metrics
+      port: 80
+      protocol: TCP
+      targetPort: metrics
+    selector:
+      app.kubernetes.io/instance: trivy-operator
+      app.kubernetes.io/name: trivy-operator
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- kind: Service
+  metadata:
+    annotations:
+      meta.helm.sh/release-name: trivy-operator
+      meta.helm.sh/release-namespace: trivy-system
+    creationTimestamp: '2026-10-23T21:36:10+00:00'
+    labels:
+      app.kubernetes.io/instance: trivy-server
+      app.kubernetes.io/managed-by: Helm
+      app.kubernetes.io/name: trivy-server
+    name: trivy-service
+    namespace: trivy-system
+    resourceVersion: '2246'
+    uid: 13cc293c-e1f0-4f5b-a389-4be94d2c4c46
+  spec:
+    clusterIP: 10.43.91.206
+    clusterIPs:
+    - 10.43.91.206
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: trivy-http
+      port: 4954
+      protocol: TCP
+      targetPort: 4954
+    selector:
+      app.kubernetes.io/instance: trivy-server
+      app.kubernetes.io/name: trivy-server
+    sessionAffinity: ClientIP
+    sessionAffinityConfig:
+      clientIP:
+        timeoutSeconds: 10800
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+kind: List

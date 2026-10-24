@@ -121,6 +121,14 @@ def classify_platform_image(image: str) -> str | None:
     for needle, kind in _IMAGE_RULES:
         if needle in path:
             return kind or None
+    # Distribution mirrors flatten "org/name" into one segment: k3s ships rancher/mirrored-coredns-coredns,
+    # rancher/mirrored-metrics-server, rancher/mirrored-library-traefik (seen on a real k3s lab).
+    if last.startswith("mirrored-"):
+        flat = last.removeprefix("mirrored-library-").removeprefix("mirrored-")
+        for needle, kind in _IMAGE_RULES:
+            org_name = needle.replace("/", "-")
+            if kind and (flat == org_name or flat == needle.rsplit("/", 1)[-1] or flat.startswith(org_name)):
+                return kind
     if last in ("kong", "kong-gateway", "kong-enterprise-edition"):
         return "kong"
     if last == "traefik" or last.endswith("-traefik"):  # k3s ships rancher/mirrored-library-traefik

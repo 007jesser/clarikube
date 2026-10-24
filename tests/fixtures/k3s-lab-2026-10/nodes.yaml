@@ -1,0 +1,184 @@
+apiVersion: v1
+items:
+- kind: Node
+  metadata:
+    annotations:
+      alpha.kubernetes.io/provided-node-ip: 192.168.141.134
+      flannel.alpha.coreos.com/backend-data: '{"VNI":1,"VtepMAC":"a2:76:db:1c:3b:d6"}'
+      flannel.alpha.coreos.com/backend-type: vxlan
+      flannel.alpha.coreos.com/kube-subnet-manager: 'true'
+      flannel.alpha.coreos.com/public-ip: 192.168.141.134
+      k3s.io/hostname: ubuntu-VMware-Virtual-Platform
+      k3s.io/internal-ip: 192.168.141.134
+      k3s.io/node-args: '["server","--disable","traefik","--write-kubeconfig-mode","600"]'
+      k3s.io/node-config-hash: 7DS2OUYA5PZCEFJY3N27ZSSZEIGFOL7PJPAD7CPEYJDYF2BYQDNA====
+      k3s.io/node-env: '{}'
+      node.alpha.kubernetes.io/ttl: '0'
+      volumes.kubernetes.io/controller-managed-attach-detach: 'true'
+    creationTimestamp: '2026-10-23T21:17:54+00:00'
+    finalizers:
+    - wrangler.cattle.io/node
+    labels:
+      beta.kubernetes.io/arch: amd64
+      beta.kubernetes.io/instance-type: k3s
+      beta.kubernetes.io/os: linux
+      kubernetes.io/arch: amd64
+      kubernetes.io/hostname: ubuntu-vmware-virtual-platform
+      kubernetes.io/os: linux
+      node-role.kubernetes.io/control-plane: 'true'
+      node.kubernetes.io/instance-type: k3s
+    name: ubuntu-vmware-virtual-platform
+    resourceVersion: '8469'
+    uid: ebdb7dde-43a5-4b7e-9a11-400edbd41a59
+  spec:
+    podCIDR: 10.42.0.0/24
+    podCIDRs:
+    - 10.42.0.0/24
+    providerID: k3s://ubuntu-vmware-virtual-platform
+  status:
+    addresses:
+    - address: 192.168.141.134
+      type: InternalIP
+    - address: ubuntu-VMware-Virtual-Platform
+      type: Hostname
+    allocatable:
+      cpu: '16'
+      ephemeral-storage: '49892499417'
+      hugepages-1Gi: '0'
+      hugepages-2Mi: '0'
+      memory: 11799112Ki
+      pods: '110'
+    capacity:
+      cpu: '16'
+      ephemeral-storage: 51287520Ki
+      hugepages-1Gi: '0'
+      hugepages-2Mi: '0'
+      memory: 11799112Ki
+      pods: '110'
+    conditions:
+    - lastHeartbeatTime: '2026-10-24T23:06:51+00:00'
+      lastTransitionTime: '2026-10-23T21:17:54+00:00'
+      message: kubelet has sufficient memory available
+      reason: KubeletHasSufficientMemory
+      status: 'False'
+      type: MemoryPressure
+    - lastHeartbeatTime: '2026-10-24T23:06:51+00:00'
+      lastTransitionTime: '2026-10-23T21:17:54+00:00'
+      message: kubelet has no disk pressure
+      reason: KubeletHasNoDiskPressure
+      status: 'False'
+      type: DiskPressure
+    - lastHeartbeatTime: '2026-10-24T23:06:51+00:00'
+      lastTransitionTime: '2026-10-23T21:17:54+00:00'
+      message: kubelet has sufficient PID available
+      reason: KubeletHasSufficientPID
+      status: 'False'
+      type: PIDPressure
+    - lastHeartbeatTime: '2026-10-24T23:06:51+00:00'
+      lastTransitionTime: '2026-10-23T21:17:55+00:00'
+      message: kubelet is posting ready status
+      reason: KubeletReady
+      status: 'True'
+      type: Ready
+    daemonEndpoints:
+      kubeletEndpoint:
+        Port: 10250
+    declaredFeatures:
+    - ExtendWebSocketsToKubelet
+    - InPlacePodLevelResourcesVerticalScaling
+    - InPlacePodVerticalScalingInitContainers
+    - RestartAllContainersOnContainerExits
+    features:
+      supplementalGroupsPolicy: true
+    images:
+    - names:
+      - docker.io/library/nginx@sha256:6784fb0834aa7dbbe12e3d7471e69c290df3e6ba810dc38b34ae33d3c1c05f7d
+      - docker.io/library/nginx:1.27
+      sizeBytes: 72406859
+    - names:
+      - mirror.gcr.io/aquasec/trivy@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+      - mirror.gcr.io/aquasec/trivy:0.75.0
+      sizeBytes: 62434684
+    - names:
+      - docker.io/falcosecurity/falcosidekick@sha256:1976da72151850aae4436f33a5ed94bdef469f42a9b61c182b4feeb5441fb081
+      - docker.io/falcosecurity/falcosidekick:2.32.0
+      sizeBytes: 56029322
+    - names:
+      - mirror.gcr.io/aquasec/trivy-operator@sha256:4cdb11af98ff409cfa7af980098203a841a5fe957cc6a0bbb0df7668065eb5fa
+      - mirror.gcr.io/aquasec/trivy-operator:0.35.0
+      sizeBytes: 55196053
+    - names:
+      - docker.io/library/nginx@sha256:21f32f6c08406306d822a0e6e8b7dc81f53f336570e852e25fbe1e3e3d0d0133
+      - docker.io/library/nginx:1.19.0
+      sizeBytes: 53323375
+    - names:
+      - docker.io/falcosecurity/falco@sha256:69e957f91b3a6beb5c82e2afae33ec3e4479dab2d4421475d288d0cd113cedf6
+      - docker.io/falcosecurity/falco:0.45.1
+      sizeBytes: 47026574
+    - names:
+      - docker.io/falcosecurity/falcoctl@sha256:90ba9627886e8f26b746fa52465d755b28ee49b76eb1d047a0fefd8cadb21907
+      - docker.io/falcosecurity/falcoctl:0.14.2
+      sizeBytes: 34236427
+    - names:
+      - docker.io/rancher/mirrored-coredns-coredns@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286
+      - docker.io/rancher/mirrored-coredns-coredns:1.14.7
+      sizeBytes: 24261571
+    - names:
+      - docker.io/rancher/mirrored-metrics-server@sha256:d9862115e7c7881280d3d75ca26bda8ffc0fc213315979575bf23ce9826205c0
+      - docker.io/rancher/mirrored-metrics-server:v0.9.0
+      sizeBytes: 23258428
+    - names:
+      - ghcr.io/aquasecurity/node-collector@sha256:f4702ce4667388f0219d6248d623a7e816231c2d4561d6af01c3ae053e524025
+      - ghcr.io/aquasecurity/node-collector:0.3.1
+      sizeBytes: 20174022
+    - names:
+      - docker.io/rancher/local-path-provisioner@sha256:e757967a5ec338f6a9b371c5a9688bedaa8c3578ea3dd4db329ea0084be0a86f
+      - docker.io/rancher/local-path-provisioner:v0.0.37
+      sizeBytes: 15066012
+    - names:
+      - docker.io/polinux/stress@sha256:b6144f84f9c15dac80deb48d3a646b55c7043ab1d83ea0a697c09097aaad21aa
+      - docker.io/polinux/stress:1.0.4
+      sizeBytes: 4041495
+    - names:
+      - docker.io/library/alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+      - docker.io/library/alpine:3.20
+      sizeBytes: 3641182
+    - names:
+      - docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      - docker.io/library/busybox:1.36
+      sizeBytes: 2217006
+    - names:
+      - docker.io/rancher/mirrored-library-busybox@sha256:101b4afd76732482eff9b95cae5f94bcf295e521fbec4e01b69c5421f3f3f3e5
+      - docker.io/rancher/mirrored-library-busybox:1.37.0
+      sizeBytes: 2151353
+    - names:
+      - docker.io/rancher/mirrored-pause@sha256:f548e0e8e3dc1896ca956272154dde3314e8cc4fde0a57577ee9fa1c63f5baf4
+      - docker.io/rancher/mirrored-pause:3.10.2
+      sizeBytes: 320805
+    nodeInfo:
+      architecture: amd64
+      bootID: 4d442856-bea5-484f-9543-da5e15f11a26
+      containerRuntimeVersion: containerd://2.3.4-k3s1.36
+      kernelVersion: 7.0.0-38-generic
+      kubeProxyVersion: ''
+      kubeletVersion: v1.36.5+k3s1
+      machineID: 1be2bf13793e496ba12988e33889bc4f
+      operatingSystem: linux
+      osImage: Ubuntu 26.04.1 LTS
+      swap:
+        capacity: 4294963200
+      systemUUID: 7a8b4d56-7912-c98d-82c5-70a642efcacf
+    runtimeHandlers:
+    - features:
+        recursiveReadOnlyMounts: true
+        userNamespaces: true
+      name: ''
+    - features:
+        recursiveReadOnlyMounts: true
+        userNamespaces: true
+      name: runc
+    - features:
+        recursiveReadOnlyMounts: false
+        userNamespaces: false
+      name: runhcs-wcow-process
+kind: List

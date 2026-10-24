@@ -15,6 +15,20 @@ _DROP_ANNOTATIONS = {"kubectl.kubernetes.io/last-applied-configuration"}
 _SECRETISH = re.compile(r"(pass(word|wd)?|secret|token|api[_-]?key|private[_-]?key|credential|auth)", re.I)
 
 
+# A bare service address (no credentials, no query string) is kept so dependency inference still works on
+# captures: "kafka:9092", "http://search.data:9200", "redis://cache.data.svc:6379/0".
+_ADDRESS = re.compile(r"^(?:[a-z][a-z0-9+.-]*://)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?(?::\d{1,5})?(?:/[\w./-]*)?$", re.I)
+
+
+def _env_value(name: str, value: str) -> str:
+    v = value.strip()
+    if _SECRETISH.search(name) or "@" in v or not _ADDRESS.match(v):
+        return REDACTED
+    host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", v, flags=re.I).split("/", 1)[0]
+    looks_like_address = "://" in v or ":" in host or "." in host  # a lone word could be a password
+    return v if looks_like_address else REDACTED
+
+
 def _redact(node: Any, key: str = "") -> Any:
     if isinstance(node, dict):
         out: dict[str, Any] = {}
@@ -29,7 +43,12 @@ def _redact(node: Any, key: str = "") -> Any:
                 }
                 continue
             if k == "env" and isinstance(v, list):
-                out[k] = [{**e, "value": REDACTED} if isinstance(e, dict) and "value" in e else _redact(e) for e in v]
+                out[k] = [
+                    {**e, "value": _env_value(str(e.get("name", "")), str(e["value"]))}
+                    if isinstance(e, dict) and "value" in e
+                    else _redact(e)
+                    for e in v
+                ]
                 continue
             if k in ("args", "command") and isinstance(v, list):
                 out[k] = [REDACTED if _SECRETISH.search(str(a)) else a for a in v]
