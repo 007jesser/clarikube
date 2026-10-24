@@ -11,9 +11,9 @@
 | 7 | Commits are made in a temporary `git worktree` | The user's checkout and branch are never touched. |
 | 8 | Dry-run is the default (`KUBEPILOT_DRY_RUN=true`) | Safe first run. |
 | 9 | Approval token returned with the plan, plus optional `cli` approval mode | Token alone can be replayed by the agent, so the tool descriptions demand human approval; `cli` mode adds a real out-of-band human gate. The PR review is the final gate either way. |
-| 10 | No Secrets, logs or exec in v1 | Keeps the ClusterRole minimal; logs are the main prompt-injection vector and are deferred until the sanitizer has been battle-tested. |
+| 10 | No Secrets or exec; logs opt-in (see 23) | Keeps the default ClusterRole minimal. |
 | 11 | ruamel.yaml round-trip editing with indentation-style detection | Diffs show only the real change; comments are preserved. |
-| 12 | Helm-templated files are skipped | They aren't valid YAML. Editing Helm values files is on the roadmap. |
+| 12 | Helm chart templates are never edited; values are (see 24) | Templates aren't valid YAML and are owned by the chart author. |
 | 13 | SQLite for Falco alerts, single replica | Simple and sufficient for v1; swap for a real store when multi-replica is needed. |
 | 14 | `harden-security-context` does not set `readOnlyRootFilesystem` | It frequently breaks apps that write to /tmp; flagged as a reviewer note instead. |
 | 15 | MCP Python SDK v2 (`MCPServer`) | Current major version; v1 `FastMCP` API is renamed. |
@@ -22,3 +22,11 @@
 | 18 | Ingest refuses to start without a token | Unauthenticated alert injection would let anyone fake or bury incidents. Opt-out env var for throwaway labs only. |
 | 19 | Git hooks disabled for kubepilot's git calls | A planning tool must not execute arbitrary repo code. |
 | 20 | SelfSubjectAccessReview at startup | Users run it with admin kubeconfigs; warn instead of silently holding write power. |
+| 21 | Components detected from operator CRs first, then Helm/StatefulSet images | The operator's CR is the source of truth and the right place to fix things; image matching covers Helm and hand-written manifests. Exporters/UIs/operators themselves are excluded by name. |
+| 22 | Dependencies inferred from env values, but values never leave the process | Env is the only universal wiring signal without a service mesh; values routinely embed credentials, so output carries only env var name + Service name. Plain words count as hosts only when the env var name looks like an address (`*_HOST`, `*_URL`, …). |
+| 23 | Logs are opt-in, failing containers only, ≤200 lines/64 KiB, signatures only | Logs are the largest prompt-injection surface. Returning a known signature plus one sanitized line gives the model the cause without giving attackers a channel. |
+| 24 | Helm values edited only where the current value equals the live value | Value paths differ per chart; matching on the live value avoids guessing and refuses on zero or several matches. |
+| 25 | Component findings' hints win over generic ones in a plan | The Kafka/JVM-aware fix (CR edit, heap-aware limit) is more correct than the generic container fix for the same symptom. |
+| 26 | `plan_revert` produces a normal plan, never a direct revert | Undo goes through the same diff, approval and audit as the original change. |
+| 27 | `verify_fix` compares file contents when the commit is not an ancestor | Squash and rebase merges rewrite commits; content equality is the reliable signal. Uses local refs only (no network fetch). |
+| 28 | Component analysis always uses a cluster-wide snapshot | Apps and their data systems usually live in different namespaces; a namespace-scoped view would miss the root cause. |

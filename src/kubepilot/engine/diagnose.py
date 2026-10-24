@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from datetime import timedelta
 
 from kubepilot import quantity
+from kubepilot.engine.logsig import LogSignal
 from kubepilot.models import (
     Container,
     Event,
@@ -184,14 +185,17 @@ def _rule_crashloop(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollout: R
     ]
     evidence += [_ev(e) for e in _events(snap, wl, ["BackOff"])][:3]
     evidence += rollout.evidence()
+    signals = rollout.logs.get(c.name, [])
+    evidence += [Evidence(source="logs", detail=f"{s.summary}: {s.excerpt}") for s in signals[:3]]
     hints = [rollout.rollback_hint()] if rollout.changed and rollout.previous else []
-    hints.append(
-        RemediationHint(
-            kind="inspect-logs",
-            params={"namespace": p.namespace, "pod": p.name, "container": c.name},
-            summary=f"Check previous logs: kubectl logs -n {p.namespace} {p.name} -c {c.name} --previous",
+    if not signals:
+        hints.append(
+            RemediationHint(
+                kind="inspect-logs",
+                params={"namespace": p.namespace, "pod": p.name, "container": c.name},
+                summary=f"Check previous logs: kubectl logs -n {p.namespace} {p.name} -c {c.name} --previous",
+            )
         )
-    )
     return [
         Finding(
             id=_fid(wl, "crashloop", c.name),
@@ -200,6 +204,7 @@ def _rule_crashloop(snap: Snapshot, wl: WorkloadRef, pods: list[Pod], rollout: R
             title=f"CrashLoopBackOff: '{c.name}' keeps exiting (code {code})",
             severity=Severity.HIGH,
             explanation=f"Container '{c.name}' starts and exits repeatedly. Exit code {code}: {meaning}."
+            + (f" Logs point to: {signals[0].summary.lower()}." if signals else "")
             + (f" Started after rollout revision {rollout.current_rev}." if rollout.changed else ""),
             evidence=evidence,
             remediations=hints,
@@ -489,6 +494,7 @@ class Rollout:
         self.previous: ReplicaSetInfo | None = None
         self.changes: list[str] = []
         self.changed = False
+        self.logs: dict[str, list[LogSignal]] = {}  # container name -> signatures, when logs were read
         lr = latest_rollout(snap, wl)
         if lr:
             self.current, self.previous = lr
@@ -549,9 +555,15 @@ RULES = [
 ]
 
 
-def diagnose_workload(snap: Snapshot, wl: WorkloadRef, include_hygiene: bool = False) -> list[Finding]:
+def diagnose_workload(
+    snap: Snapshot,
+    wl: WorkloadRef,
+    include_hygiene: bool = False,
+    log_signals: dict[str, list[LogSignal]] | None = None,
+) -> list[Finding]:
     pods = snap.pods_of(wl)
     rollout = Rollout(snap, wl, pods)
+    rollout.logs = log_signals or {}
     findings: list[Finding] = []
     for rule in RULES:
         findings.extend(rule(snap, wl, pods, rollout))

@@ -127,10 +127,16 @@ def cmd_demo(args: argparse.Namespace) -> int:
         health = kp.cluster_health()
         print("kubepilot demo — bundled synthetic cluster (nothing is contacted)\n")
         for i in health["reliability_issues"]:
-            print(f"  [{i['severity']:>8}] {i['workload']}: {i['title']}")
+            cause = f"\n             ↳ likely root cause: {i['likely_root_cause']}" if "likely_root_cause" in i else ""
+            print(f"  [{i['severity']:>8}] {i['workload']}: {i['title']}{cause}")
         for i in health["security_incidents"]:
             print(f"  [{i['severity']:>8}] {i['workload']}: security score {i['score']}")
+        print("\nData systems:")
+        for c in health["components"]:
+            issue = f" — {c['top_issue']}" if c["top_issue"] else ""
+            print(f"  [{c['status']:>8}] {c['component']}{issue}")
         print("\nDetails:   kubepilot demo-diagnose shop checkout")
+        print("           kubepilot demo-diagnose shop orders     (app failing because of Kafka)")
         print("Fix flow:  kubepilot demo --setup ./kubepilot-demo   (prints an MCP client config)")
         return 0
 
@@ -167,6 +173,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
     print("Other MCP clients (mcpServers JSON):")
     _print(cfg)
     print('\nThen ask: "Why is checkout failing? Prepare a fix." and approve the diff.')
+    print('Or: "Why is orders crashing?" — kubepilot traces it to the Kafka cluster and proposes the config fix.')
     return 0
 
 
@@ -182,6 +189,7 @@ def _demo_settings(settings: Settings, repo: Path | None, state: Path | None) ->
         allowlist=demo.ALLOWLIST,
         gitops_repo=repo,
         state_dir=state or settings.state_dir,
+        read_logs=True,  # bundled demo logs
     )
 
 

@@ -1,0 +1,38 @@
+# Event bus — Strimzi operator
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: events
+spec:
+  kafka:
+    version: 3.7.0
+    replicas: 3
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: external
+        port: 9094
+        type: loadbalancer   # partner integration, temporary (2025)
+        tls: false
+    config:
+      default.replication.factor: 3
+      min.insync.replicas: 3
+      offsets.topic.replication.factor: 3
+    storage:
+      type: persistent-claim
+      size: 20Gi
+      class: fast-ssd
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 2Gi
+    jvmOptions:
+      -Xms: 1024m
+      -Xmx: 1024m
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

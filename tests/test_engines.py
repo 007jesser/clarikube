@@ -67,7 +67,15 @@ def test_healthy_workloads_have_no_issues(snap) -> None:  # type: ignore[no-unty
 
 def test_diagnose_all_ranked_and_filtered(snap) -> None:  # type: ignore[no-untyped-def]
     findings = diagnose.diagnose_all(snap)
-    assert {f.workload.name for f in findings} == {"checkout", "frontend", "worker", "api"}
+    assert {f.workload.name for f in findings} == {
+        "checkout",
+        "frontend",
+        "worker",
+        "api",
+        "orders",  # shop apps
+        "search",
+        "events-kafka",  # data tier pods (OOMKilled OpenSearch, Kafka broker without a volume)
+    }
     assert all(f.severity >= Severity.MEDIUM for f in findings)
     hygiene = diagnose.diagnose_all(snap, include_hygiene=True, min_severity=Severity.LOW)
     assert len(hygiene) >= len(findings)

@@ -4,6 +4,7 @@
     uv run python lab/verify.py --phase broken     # after lab/break.sh
     uv run python lab/verify.py --phase attacked   # after lab/attack.sh
     uv run python lab/verify.py --phase fixed      # after committing + applying kubepilot's fixes
+    uv run python lab/verify.py --phase data       # after lab/data.sh (optional data tier)
 
 WARN = not wrong, just not ready yet (e.g. Trivy still scanning, CronJob not run yet).
 Uses the same settings as `kubepilot serve` (KUBEPILOT_* env vars).
@@ -163,9 +164,44 @@ def check_fixed(kp: KubePilot, r: Report) -> None:
         )
 
 
+def check_data(kp: KubePilot, r: Report) -> None:
+    comps = {c["name"]: c for c in kp.list_components("data")["components"]}
+    for name in ("cache", "queue", "search"):
+        r.ok(
+            name in comps,
+            f"data/{name}: detected as a component",
+            comps.get(name, {}).get("component", ""),
+            warn_only=name == "search",
+        )
+
+    def titles(name: str) -> str:
+        try:
+            return " | ".join(f["title"] for f in kp.diagnose_component("data", name)["findings"])
+        except Exception as e:
+            return f"ERROR {e}"
+
+    t = titles("cache")
+    r.ok("without a password" in t or "protected mode" in t.lower(), "redis: no auth detected", t[:160])
+    r.ok("reachable from outside" in t, "redis: NodePort exposure detected", t[:160])
+    t = titles("queue")
+    r.ok("even number" in t, "rabbitmq: even member count detected", t[:160])
+    r.ok("PodDisruptionBudget" in t, "rabbitmq: missing PDB detected", t[:160])
+    if "search" in comps:
+        t = titles("search")
+        r.ok("JVM heap" in t, "opensearch: heap vs limit detected", t[:160])
+        fs = findings(kp, "reports")
+        f = has(fs, "Likely root cause: OpenSearch")
+        r.ok(
+            f is not None,
+            "shop/reports: crash blamed on OpenSearch",
+            "; ".join(x["title"] for x in fs)[:160],
+            warn_only=True,
+        )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--phase", choices=["baseline", "broken", "attacked", "fixed"], default="baseline")
+    ap.add_argument("--phase", choices=["baseline", "broken", "attacked", "fixed", "data"], default="baseline")
     ap.add_argument("--json", action="store_true", help="also dump the raw cluster_health output")
     args = ap.parse_args()
     settings = Settings.from_env()
@@ -177,6 +213,7 @@ def main() -> int:
         "broken": lambda: check_broken(kp, r),
         "attacked": lambda: check_attacked(kp, r, settings),
         "fixed": lambda: check_fixed(kp, r),
+        "data": lambda: check_data(kp, r),
     }[args.phase]()
     if args.json:
         print(json.dumps(kp.cluster_health(), indent=2, ensure_ascii=False))

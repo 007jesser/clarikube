@@ -4,6 +4,7 @@ set -euo pipefail
 export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
 LAB_REPO=${LAB_REPO:-$HOME/kubepilot-lab-gitops}
 STATE=${KUBEPILOT_STATE_DIR:-$HOME/.local/state/kubepilot}
+[[ -f "$LAB_REPO/data/kustomization.yaml" ]] && { kubectl delete -k "$LAB_REPO/data" --ignore-not-found --wait=true || true; }
 kubectl delete -k "$LAB_REPO" --ignore-not-found --wait=true || true
 kubectl delete networkpolicy -n shop -l app.kubernetes.io/managed-by=kubepilot --ignore-not-found
 rm -rf "$LAB_REPO" "$STATE/plans" "$STATE/approvals" "$STATE/audit.jsonl"

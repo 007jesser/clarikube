@@ -19,6 +19,7 @@ Source of truth: `SCORING` in `src/kubepilot/engine/security.py`.
 | May run as root (no runAsNonRoot / runAsUser ≠ 0) | 10 |
 | allowPrivilegeEscalation not false | 5 |
 | No NetworkPolicy restricts ingress | 10 |
+| Selected by a LoadBalancer / NodePort Service (reachable from outside the cluster) | 15 |
 | ServiceAccount risky RBAC (sum, cap 30): cluster-admin 30 (20 namespaced), read all secrets 20 cluster / 15 namespaced, rbac escalate/bind/impersonate 20, nodes/proxy 20, pods/exec 10, create workloads 10 | ≤30 |
 
 **Correlation:** if a runtime alert of Warning or higher co-occurs with a critical CVE *or* excessive

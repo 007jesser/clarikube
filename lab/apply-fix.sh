@@ -14,4 +14,5 @@ ok=$(echo "$ok" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
 [[ "$ok" == y || "$ok" == yes ]] || { echo "aborted (answer was: '$ok')"; exit 1; }
 git -C "$LAB_REPO" -c user.name=lab -c user.email=lab@local merge --no-ff -q -m "Merge $BRANCH" "$BRANCH"
 kubectl apply -k "$LAB_REPO"
+[[ -f "$LAB_REPO/data/kustomization.yaml" ]] && kubectl apply -k "$LAB_REPO/data"
 echo "Applied. Watch: kubectl -n shop get pods -w    Undo: git -C $LAB_REPO revert -m 1 HEAD && kubectl apply -k $LAB_REPO"

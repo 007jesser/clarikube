@@ -60,6 +60,7 @@ def make_settings(tmp_path: Path, repo: Path | None, **over: object) -> Settings
         plan_ttl=timedelta(minutes=30),
         falco_window=timedelta(hours=24),
         ingest_token=None,
+        read_logs=True,  # fixture default: bundled demo logs
     )
     base.update(over)
     return Settings(**base)  # type: ignore[arg-type]

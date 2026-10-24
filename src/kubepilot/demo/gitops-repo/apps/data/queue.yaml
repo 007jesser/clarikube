@@ -1,0 +1,27 @@
+# Work queue — RabbitMQ cluster operator
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: queue
+spec:
+  replicas: 2
+  image: rabbitmq:3.13-management
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: queue-mgmt
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: queue
+  ports:
+    - name: management
+      port: 15672
+      nodePort: 31672

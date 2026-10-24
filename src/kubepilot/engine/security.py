@@ -45,6 +45,7 @@ SCORING: dict[str, int] = {
     "runs_as_root": 10,
     "priv_escalation": 5,
     "no_ingress_netpol": 10,
+    "external_service": 15,
     # RBAC points come from engine.rbac.RiskyPermission.points (capped)
     "rbac_cap": 30,
 }
@@ -218,6 +219,20 @@ def _score_exposure(acc: _Acc, pods: list[Pod], snap: Snapshot) -> None:
                 summary="Add a NetworkPolicy allowing only the expected callers",
             )
         )
+
+    external = sorted(
+        f"{svc.name} ({svc.type})"
+        for svc in snap.services
+        if svc.external
+        and svc.namespace == p.namespace
+        and svc.selector
+        and all(p.labels.get(k) == v for k, v in svc.selector.items())
+    )
+    if external:
+        acc.add(
+            "external", SCORING["external_service"], f"reachable from outside the cluster via {', '.join(external)}"
+        )
+        acc.overexposed = True
 
     if p.automount_sa_token:
         grants = rbac.grants_for(p.namespace, p.service_account, snap.roles, snap.bindings)

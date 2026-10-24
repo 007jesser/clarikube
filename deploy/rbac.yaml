@@ -21,7 +21,10 @@ metadata:
   name: kubepilot-readonly
 rules:
   - apiGroups: [""]
-    resources: [pods, events, nodes, namespaces, services, serviceaccounts]
+    resources: [pods, events, nodes, namespaces, services, serviceaccounts, persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
     verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments, replicasets, statefulsets, daemonsets]
@@ -41,6 +44,34 @@ rules:
   - apiGroups: [aquasecurity.github.io]
     resources: [vulnerabilityreports, configauditreports]
     verbs: [get, list, watch]
+  # Operator resources for component health (only read if those operators are installed)
+  - apiGroups: [kafka.strimzi.io]
+    resources: [kafkas, kafkanodepools]
+    verbs: [get, list, watch]
+  - apiGroups: [rabbitmq.com]
+    resources: [rabbitmqclusters]
+    verbs: [get, list, watch]
+  - apiGroups: [opensearch.opster.io]
+    resources: [opensearchclusters]
+    verbs: [get, list, watch]
+  - apiGroups: [elasticsearch.k8s.elastic.co]
+    resources: [elasticsearches]
+    verbs: [get, list, watch]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters]
+    verbs: [get, list, watch]
+  - apiGroups: [acid.zalan.do]
+    resources: [postgresqls]
+    verbs: [get, list, watch]
+  - apiGroups: [mongodbcommunity.mongodb.com]
+    resources: [mongodbcommunity]
+    verbs: [get, list, watch]
+  - apiGroups: [redis.redis.opstreelabs.in]
+    resources: [redisclusters, redisreplications]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -50,6 +81,30 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: kubepilot-readonly
+subjects:
+  - kind: ServiceAccount
+    name: kubepilot
+    namespace: kubepilot
+---
+# OPTIONAL: lets kubepilot read the last lines of failing containers' logs (KUBEPILOT_READ_LOGS=true).
+# Logs are untrusted input: kubepilot only extracts known error signatures and sanitizes them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubepilot-logs
+rules:
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubepilot-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubepilot-logs
 subjects:
   - kind: ServiceAccount
     name: kubepilot

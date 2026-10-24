@@ -11,31 +11,52 @@ from typing import Any
 
 from kubepilot.models import (
     BindingInfo,
+    Condition,
     Container,
     ContainerState,
+    CustomResource,
+    EnvVar,
     Event,
     FalcoAlert,
     LabelSelector,
     NetworkPolicyInfo,
     Node,
+    PDBInfo,
     Pod,
     PolicyRule,
+    PVCInfo,
     ReplicaSetInfo,
     Resources,
     RoleInfo,
     SecurityContext,
+    ServiceInfo,
+    ServicePort,
     Severity,
     Subject,
     Volume,
     Vulnerability,
     VulnerabilityReport,
     WorkloadRef,
+    WorkloadSpec,
 )
 
 Raw = dict[str, Any]
 
 # Kinds whose pods are owned through an intermediate ReplicaSet / Job.
-_TOP_LEVEL_KINDS = {"Deployment", "StatefulSet", "DaemonSet", "CronJob", "Job", "ReplicaSet"}
+_TOP_LEVEL_KINDS = {
+    "Deployment",
+    "StatefulSet",
+    "DaemonSet",
+    "CronJob",
+    "Job",
+    "ReplicaSet",
+    # operator-owned pod controllers (pods grouped under them instead of shown one by one)
+    "StrimziPodSet",
+    "Cluster",
+    "Rollout",
+    "CloneSet",
+    "AdvancedStatefulSet",
+}
 
 
 def ts(value: Any) -> datetime | None:
@@ -146,6 +167,21 @@ def _s(v: Any) -> str | None:
     return None if v is None else str(v)
 
 
+def _env(c: Raw) -> list[EnvVar]:
+    out: list[EnvVar] = []
+    for e in c.get("env") or []:
+        vf = e.get("valueFrom") or {}
+        out.append(
+            EnvVar(
+                name=str(e.get("name", "")),
+                value=None if e.get("value") is None else str(e["value"]),
+                from_secret="secretKeyRef" in vf,
+                from_configmap="configMapKeyRef" in vf,
+            )
+        )
+    return out
+
+
 def containers_from_spec(spec: Raw, statuses: Raw | None = None) -> list[Container]:
     statuses = statuses or {}
     by_name: dict[str, Raw] = {}
@@ -161,6 +197,9 @@ def containers_from_spec(spec: Raw, statuses: Raw | None = None) -> list[Contain
                     name=c.get("name", ""),
                     image=c.get("image", ""),
                     init=init,
+                    env=_env(c),
+                    args=[str(a) for a in (c.get("command") or []) + (c.get("args") or [])],
+                    ports=[int(p["containerPort"]) for p in c.get("ports") or [] if p.get("containerPort")],
                     resources=_resources(c.get("resources")),
                     security=_security(pod_sc, c.get("securityContext")),
                     has_liveness_probe=c.get("livenessProbe") is not None,
@@ -418,4 +457,117 @@ def falco_alert(raw: Raw) -> FalcoAlert:
         container=f.get("container.name"),
         image=image,
         tags=[str(t) for t in raw.get("tags") or []],
+    )
+
+
+# ---------------------------------------------------------------- stateful workloads & friends
+
+
+def workload_spec(raw: Raw) -> WorkloadSpec:
+    """Deployment / StatefulSet / DaemonSet: desired vs. ready replicas and the pod template."""
+    m = _meta(raw)
+    kind = str(raw.get("kind", "Deployment"))
+    spec = raw.get("spec") or {}
+    status = raw.get("status") or {}
+    tmpl = (spec.get("template") or {}).get("spec") or {}
+    if kind == "DaemonSet":
+        desired = int(status.get("desiredNumberScheduled") or 0)
+        ready = int(status.get("numberReady") or 0)
+    else:
+        replicas = spec.get("replicas")
+        desired = 1 if replicas is None else int(replicas)
+        ready = int(status.get("readyReplicas") or 0)
+    ref = _controller_ref(raw)
+    ns = m.get("namespace", "default")
+    return WorkloadSpec(
+        kind=kind,
+        namespace=ns,
+        name=m.get("name", ""),
+        labels=dict(m.get("labels") or {}),
+        selector=dict((spec.get("selector") or {}).get("matchLabels") or {}),
+        replicas=desired,
+        ready_replicas=ready,
+        containers=containers_from_spec(tmpl),
+        volume_claim_templates=[
+            str((t.get("metadata") or {}).get("name", "")) for t in spec.get("volumeClaimTemplates") or []
+        ],
+        template_volumes=_volumes(tmpl),
+        service_name=spec.get("serviceName"),
+        owner=WorkloadRef(kind=ref["kind"], namespace=ns, name=ref["name"]) if ref else None,
+    )
+
+
+def pvc(raw: Raw) -> PVCInfo:
+    m = _meta(raw)
+    spec = raw.get("spec") or {}
+    status = raw.get("status") or {}
+    return PVCInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        phase=status.get("phase", "Unknown"),
+        storage_class=spec.get("storageClassName"),
+        requested=_s(((spec.get("resources") or {}).get("requests") or {}).get("storage")),
+        capacity=_s((status.get("capacity") or {}).get("storage")),
+    )
+
+
+def service(raw: Raw) -> ServiceInfo:
+    m = _meta(raw)
+    spec = raw.get("spec") or {}
+    stype = spec.get("type") or "ClusterIP"
+    return ServiceInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        type=stype,
+        selector=dict(spec.get("selector") or {}),
+        ports=[
+            ServicePort(
+                port=int(p.get("port", 0)),
+                target_port=_s(p.get("targetPort")),
+                node_port=p.get("nodePort"),
+                name=p.get("name"),
+            )
+            for p in spec.get("ports") or []
+        ],
+        headless=spec.get("clusterIP") == "None",
+        external=stype in ("LoadBalancer", "NodePort") or bool(spec.get("externalIPs")),
+    )
+
+
+def pdb(raw: Raw) -> PDBInfo:
+    m = _meta(raw)
+    spec = raw.get("spec") or {}
+    status = raw.get("status") or {}
+    return PDBInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        selector=selector(spec.get("selector")),
+        min_available=_s(spec.get("minAvailable")),
+        max_unavailable=_s(spec.get("maxUnavailable")),
+        disruptions_allowed=status.get("disruptionsAllowed"),
+    )
+
+
+def custom_resource(raw: Raw) -> CustomResource:
+    m = _meta(raw)
+    status = raw.get("status") or {}
+    api = str(raw.get("apiVersion", ""))
+    return CustomResource(
+        group=api.split("/")[0] if "/" in api else "",
+        kind=str(raw.get("kind", "")),
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        labels=dict(m.get("labels") or {}),
+        spec=dict(raw.get("spec") or {}),
+        status=dict(status) if isinstance(status, dict) else {},
+        conditions=[
+            Condition(
+                type=str(c.get("type", "")),
+                status=str(c.get("status", "")),
+                reason=c.get("reason"),
+                message=c.get("message"),
+            )
+            for c in (status.get("conditions") or [] if isinstance(status, dict) else [])
+            if isinstance(c, dict)
+        ],
     )

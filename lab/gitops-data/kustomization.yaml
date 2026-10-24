@@ -1,0 +1,10 @@
+# Optional data tier for the lab (make lab-data): plain-manifest Redis, RabbitMQ and OpenSearch with
+# deliberate, realistic misconfigurations, plus an app in `shop` that depends on them.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - redis.yaml
+  - rabbitmq.yaml
+  - opensearch.yaml
+  - reports.yaml

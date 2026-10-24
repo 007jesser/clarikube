@@ -1,0 +1,45 @@
+# Orders service — publishes OrderCreated to Kafka
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  labels:
+    app: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: orders
+          image: registry.example.com/shop/orders:1.4.2
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: events-kafka-bootstrap.data.svc.cluster.local:9092
+            - name: SEARCH_URL
+              value: http://search.data:9200
+            - name: PG_HOST
+              value: pg-rw.data.svc
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orders-db
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080

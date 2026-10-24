@@ -126,6 +126,21 @@ sleep 60 && make lab-verify PHASE=fixed
 ### Approval-mode test (optional)
 Set `KUBEPILOT_APPROVAL_MODE=cli` in `lab/mcp.sh`; `commit_plan` should then refuse until you run `make lab-approve ID=<plan-id>` on the lab machine.
 
+## 5b. Optional: data tier (Redis, RabbitMQ, OpenSearch)
+
+Needs ~1.5 GB more RAM (`SKIP_SEARCH=1` leaves OpenSearch out).
+
+```bash
+make lab-data                 # commits lab/gitops-data into the lab repo and applies it
+make lab-verify PHASE=data    # after ~3 minutes
+```
+
+In `lab/mcp.sh` set `KUBEPILOT_READ_LOGS=true` (your kubeconfig can read logs), then ask:
+- "What data systems run in the cluster and what's wrong with them?"
+- "Why does shop/reports keep crashing?" → should blame OpenSearch (heap = limit → OOMKilled).
+- "Fix the Redis exposure" → `make-service-internal` diff on `data/redis.yaml`.
+- After `make lab-fix BRANCH=...`: "Did plan <id> fix it?" → `verify_fix`.
+
 ## 6. Phase 5: capture
 
 ```bash

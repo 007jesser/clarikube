@@ -13,7 +13,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from kubepilot.source.alerts import AlertStore
-from kubepilot.source.base import RawCluster, Snapshot
+from kubepilot.source.base import LOG_LIMIT_BYTES, LOG_TAIL_LINES, RawCluster, Snapshot
+from kubepilot.source.crds import OPERATOR_CRDS
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class KubeSource:
         self._net = client.NetworkingV1Api(self._api)
         self._rbac = client.RbacAuthorizationV1Api(self._api)
         self._custom = client.CustomObjectsApi(self._api)
+        self._policy = client.PolicyV1Api(self._api)
         self._alerts = alerts
         self._falco_window = falco_window
         self._cache_ttl = cache_ttl
@@ -146,6 +148,27 @@ class KubeSource:
             i["kind"] = "VulnerabilityReport"
         return list(items)
 
+    def _operator_crs(self, ns: str | None) -> list[dict[str, Any]]:
+        """List known operator CRs; CRDs that aren't installed (404) or not permitted (403) are skipped."""
+        from kubernetes.client.exceptions import ApiException
+
+        out: list[dict[str, Any]] = []
+        for group, version, plural, kind in OPERATOR_CRDS:
+            try:
+                if ns:
+                    resp = self._custom.list_namespaced_custom_object(group, version, ns, plural)
+                else:
+                    resp = self._custom.list_cluster_custom_object(group, version, plural)
+            except ApiException as e:
+                if e.status in (403, 404):
+                    continue
+                raise
+            for item in cast(dict[str, Any], resp).get("items", []):
+                item.setdefault("kind", kind)
+                item.setdefault("apiVersion", f"{group}/{version}")
+                out.append(item)
+        return out
+
     # ------------------------------------------------------------ API
 
     def _fetch_raw(self, ns: str | None, warnings: list[str]) -> RawCluster:
@@ -174,6 +197,27 @@ class KubeSource:
             )
             + self._list(rbac.list_cluster_role_binding, "ClusterRoleBinding"),
             vulnerability_reports=self._trivy(ns, warnings),
+            workloads=self._scoped(
+                ns, apps.list_deployment_for_all_namespaces, apps.list_namespaced_deployment, "Deployment"
+            )
+            + self._scoped(
+                ns, apps.list_stateful_set_for_all_namespaces, apps.list_namespaced_stateful_set, "StatefulSet"
+            )
+            + self._scoped(ns, apps.list_daemon_set_for_all_namespaces, apps.list_namespaced_daemon_set, "DaemonSet"),
+            pvcs=self._scoped(
+                ns,
+                core.list_persistent_volume_claim_for_all_namespaces,
+                core.list_namespaced_persistent_volume_claim,
+                "PersistentVolumeClaim",
+            ),
+            services=self._scoped(ns, core.list_service_for_all_namespaces, core.list_namespaced_service, "Service"),
+            pdbs=self._scoped(
+                ns,
+                self._policy.list_pod_disruption_budget_for_all_namespaces,
+                self._policy.list_namespaced_pod_disruption_budget,
+                "PodDisruptionBudget",
+            ),
+            custom_resources=self._operator_crs(ns),
         )
 
     def snapshot(self, namespace: str | None = None) -> Snapshot:
@@ -191,6 +235,26 @@ class KubeSource:
         snap = Snapshot.build(raw, now=now, falco=falco, warnings=warnings)
         self._cache[namespace] = (time.monotonic(), snap)
         return snap
+
+    def logs(self, namespace: str, pod: str, container: str, previous: bool) -> str | None:
+        """Last lines of a container log. Needs the optional ``pods/log`` permission (deploy/rbac.yaml)."""
+        from kubernetes.client.exceptions import ApiException
+
+        try:
+            text = self._core.read_namespaced_pod_log(
+                pod,
+                namespace,
+                container=container,
+                previous=previous,
+                tail_lines=LOG_TAIL_LINES,
+                limit_bytes=LOG_LIMIT_BYTES,
+                _request_timeout=10,
+            )
+        except ApiException as e:
+            if e.status in (400, 403, 404):  # no previous instance / not allowed / gone
+                return None
+            raise
+        return str(text) if text is not None else None
 
     def raw_dump(self, namespace: str | None = None) -> RawCluster:
         """Used by ``kubepilot capture`` to write a fixture directory from a live cluster."""

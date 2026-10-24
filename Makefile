@@ -72,6 +72,9 @@ lab-fix:            ## merge a kubepilot branch and apply it: BRANCH=kubepilot/.
 lab-approve:        ## human approval for cli mode: ID=<plan-id>
 	$(LAB_ENV) uv run kubepilot approve $(ID)
 
+lab-data:           ## optional data tier: Redis, RabbitMQ, OpenSearch + dependent app (SKIP_SEARCH=1)
+	bash lab/data.sh
+
 lab-reset:          ## back to baseline
 	./lab/reset.sh
 

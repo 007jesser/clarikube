@@ -1,0 +1,42 @@
+# OpenSearch: heap == memory limit (gets OOM-killed), security plugin disabled.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: search
+  namespace: data
+  labels: {app.kubernetes.io/name: opensearch, app.kubernetes.io/instance: search}
+spec:
+  replicas: 1
+  serviceName: search
+  selector:
+    matchLabels: {app.kubernetes.io/name: opensearch, app.kubernetes.io/instance: search}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: opensearch, app.kubernetes.io/instance: search}
+    spec:
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.13.0
+          ports:
+            - containerPort: 9200
+          env:
+            - {name: discovery.type, value: single-node}
+            - {name: OPENSEARCH_JAVA_OPTS, value: "-Xms512m -Xmx512m"}
+            - {name: DISABLE_SECURITY_PLUGIN, value: "true"}
+            - {name: DISABLE_INSTALL_DEMO_CONFIG, value: "true"}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 512Mi}
+          readinessProbe:
+            tcpSocket: {port: 9200}
+            initialDelaySeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+  namespace: data
+spec:
+  selector: {app.kubernetes.io/name: opensearch, app.kubernetes.io/instance: search}
+  ports:
+    - {name: http, port: 9200}

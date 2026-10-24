@@ -12,4 +12,5 @@ export KUBEPILOT_ALERTS_DB="$STATE/alerts.db"
 export KUBEPILOT_ALLOWLIST="$PWD/lab/allowlist.yaml"
 export KUBEPILOT_GITOPS_REPO=${KUBEPILOT_GITOPS_REPO:-$HOME/kubepilot-lab-gitops}
 export KUBEPILOT_DRY_RUN=${KUBEPILOT_DRY_RUN:-false}
+export KUBEPILOT_READ_LOGS=${KUBEPILOT_READ_LOGS:-true}   # your own lab: read failing containers' log signatures
 exec uv run --quiet kubepilot serve 2>>"$STATE/mcp.log"

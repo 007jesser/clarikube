@@ -35,6 +35,38 @@ have not yet been checked against a live cluster in this repo's CI.
 - Default rule priorities: "Terminal shell in container" = Notice, "Read sensitive file untrusted" =
   Warning, "Drop and execute new binary in container" = Critical (rule sets change between releases).
 
+## Operators — **verify**
+CRDs read when present (`source/crds.py`; missing ones are skipped, 403s are skipped):
+`kafkas`/`kafkanodepools.kafka.strimzi.io/v1beta2`, `rabbitmqclusters.rabbitmq.com/v1beta1`,
+`opensearchclusters.opensearch.opster.io/v1`, `elasticsearches.elasticsearch.k8s.elastic.co/v1`,
+`clusters.postgresql.cnpg.io/v1`, `postgresqls.acid.zalan.do/v1`, `mongodbcommunity.mongodbcommunity.mongodb.com/v1`,
+`redisclusters`/`redisreplications.redis.redis.opstreelabs.in/v1beta2`, `applications.argoproj.io/v1alpha1`.
+Pod ↔ CR label keys: Strimzi `strimzi.io/cluster` (+ `strimzi.io/kind=Kafka`, broker/controller roles),
+RabbitMQ operator `app.kubernetes.io/name=<cluster>`, OpenSearch operator `opster.io/opensearch-cluster`,
+ECK `elasticsearch.k8s.elastic.co/cluster-name`, CNPG `cnpg.io/cluster`, Zalando `cluster-name`.
+Status: Strimzi/CNPG/RabbitMQ `status.conditions` (`Ready`, `AllReplicasReady`, `ClusterAvailable`), ECK/OpenSearch
+`status.health` (green/yellow/red). Strimzi broker config lives in `spec.kafka.config`; resources in
+`spec.kafka.resources`; JVM heap in `spec.kafka.jvmOptions` (`-Xmx`). Strimzi pods are owned by `StrimziPodSet`.
+
+## Data-system rules of thumb used by checks
+- JVM heap ≤ 75% of the container limit (Kafka); ≤ 50% for OpenSearch/Elasticsearch (page cache).
+- Kafka `min.insync.replicas` must be < replication factor to tolerate one broker down; acks=all writes fail
+  with `NotEnoughReplicasException` when fewer in-sync replicas than required.
+- Quorum systems with an even member count tolerate no more failures than one member fewer.
+- Bitnami images: `ALLOW_EMPTY_PASSWORD=yes` disables auth. Redis `--protected-mode no` without
+  `requirepass` accepts anyone. PostgreSQL `POSTGRES_HOST_AUTH_METHOD=trust` disables passwords.
+- OpenSearch `DISABLE_SECURITY_PLUGIN=true` / Elasticsearch `xpack.security.enabled=false` disable auth and TLS.
+
+## Logs
+- `read_namespaced_pod_log(previous=True, tail_lines=200, limit_bytes=65536)`; 400 (no previous
+  instance), 403 and 404 are treated as "no logs". Needs `pods/log` `get` (optional ClusterRole).
+
+## Helm values
+- Argo CD: `spec.source(s)[].helm.valuesObject` (map), `helm.values` (string, not edited), `helm.valueFiles`
+  (resolved relative to `source.path` in the same repo). Release name = `helm.releaseName` or the Application name.
+- Flux: `HelmRelease.spec.values`, release name = `spec.releaseName` or `metadata.name`.
+- Pods of a Helm release carry `app.kubernetes.io/instance=<release>`.
+
 ## MCP
 - Built on the official Python SDK **v2** (`mcp.server.mcpserver.MCPServer`; v1's `FastMCP` was renamed).
 - Tools carry `readOnlyHint` annotations; plan/commit tools are marked non-read-only.

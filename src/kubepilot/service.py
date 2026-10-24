@@ -10,13 +10,17 @@ from datetime import timedelta
 from typing import Any
 
 from kubepilot import remediation
-from kubepilot.changes import ChangePlan, PlanStore
+from kubepilot.changes import ChangePlan, PlanStore, merge_state, revert_changes
 from kubepilot.config import Settings
-from kubepilot.engine import diagnose, rbac, security, selectors
+from kubepilot.engine import components, dependencies, diagnose, logsig, rbac, security, selectors
 from kubepilot.engine.allowlist import Allowlist
+from kubepilot.engine.components import Component
+from kubepilot.engine.dependencies import Edge
+from kubepilot.engine.logsig import LogSignal
 from kubepilot.models import Evidence, Finding, RemediationHint, SecurityIncident, Severity, WorkloadRef
+from kubepilot.remediation import RemediationResult
 from kubepilot.sanitize import clean, k8s_name
-from kubepilot.source.base import ClusterSource, Snapshot
+from kubepilot.source.base import ClusterSource, Snapshot, read_logs
 
 MAX_ITEMS = 25
 
@@ -67,6 +71,43 @@ def incident_dict(i: SecurityIncident) -> dict[str, Any]:
     }
 
 
+def _signal(s: LogSignal) -> dict[str, Any]:
+    return {"kind": s.kind, "summary": s.summary, "excerpt": clean(s.excerpt, 200)}
+
+
+class Analysis:
+    """Components, dependency edges and component findings for one snapshot (computed once per call)."""
+
+    def __init__(self, snap: Snapshot) -> None:
+        self.components: list[Component] = components.detect(snap)
+        self.edges: list[Edge] = dependencies.build(snap, self.components)
+        self.findings: dict[str, list[Finding]] = {}
+        for c in self.components:
+            clients = {e.client.namespace for e in dependencies.clients_of(self.edges, c.key)}
+            self.findings[c.key] = components.diagnose_component(snap, c, clients)
+
+    def component(self, key: str) -> Component | None:
+        return next((c for c in self.components if c.key == key), None)
+
+    def find(self, namespace: str, name: str) -> Component | None:
+        """By component name, or by a controller/pod that belongs to it."""
+        for c in self.components:
+            if c.namespace == namespace and c.name == name:
+                return c
+        for c in self.components:
+            if c.namespace != namespace:
+                continue
+            if any(s.name == name for s in c.specs) or any(p.name == name or p.workload.name == name for p in c.pods):
+                return c
+        return None
+
+    def owning(self, wl: WorkloadRef) -> Component | None:
+        for c in self.components:
+            if any(s.ref == wl for s in c.specs) or any(p.workload == wl for p in c.pods):
+                return c
+        return None
+
+
 class KubePilot:
     def __init__(self, source: ClusterSource, settings: Settings) -> None:
         self.source = source
@@ -94,6 +135,47 @@ class KubePilot:
             raise NotFound(f"no workload or pod named {name!r} in namespace {namespace!r}")
         return wl
 
+    def _log_signals(self, snap: Snapshot, wl: WorkloadRef) -> dict[str, list[LogSignal]]:
+        """Signatures from the logs of this workload's failing containers, per container name
+        (opt-in via KUBEPILOT_READ_LOGS; at most 2 containers read)."""
+        if not self.settings.read_logs:
+            return {}
+        found: dict[str, list[LogSignal]] = {}
+        budget = 2
+        for p in snap.pods_of(wl):
+            for c in p.app_containers:
+                failing = not c.ready or c.restart_count > 0 or c.last_state.reason in ("Error", "OOMKilled")
+                if budget == 0 or c.name in found or not failing or p.phase in ("Pending", "Succeeded"):
+                    continue
+                budget -= 1
+                text = read_logs(self.source, p.namespace, p.name, c.name, previous=c.restart_count > 0)
+                if text is None and c.restart_count > 0:
+                    text = read_logs(self.source, p.namespace, p.name, c.name, previous=False)
+                sigs = logsig.analyze(text or "")
+                if sigs:
+                    found[c.name] = sigs
+        return found
+
+    def _diagnose(
+        self, snap: Snapshot, wl: WorkloadRef, analysis: Analysis, include_hygiene: bool
+    ) -> tuple[list[Finding], list[LogSignal], list[Edge]]:
+        """Workload findings with dependency root causes first."""
+        per_container = self._log_signals(snap, wl)
+        signals = [x for sigs in per_container.values() for x in sigs]
+        own = diagnose.diagnose_workload(snap, wl, include_hygiene=include_hygiene, log_signals=per_container)
+        comp = analysis.owning(wl)
+        if comp is not None:  # a pod of Kafka/OpenSearch/...: the component view explains it better
+            extra = [f for f in analysis.findings.get(comp.key, []) if f.id not in {x.id for x in own}]
+            own = own + extra
+        deps = dependencies.dependencies_of(analysis.edges, wl)
+        upstream = dependencies.upstream_findings(wl, snap.pods_of(wl), own, analysis.edges, analysis.findings, signals)
+        ordered = sorted(upstream, key=lambda f: -f.severity) + sorted(own, key=lambda f: -f.severity)
+        return ordered, signals, deps
+
+    def _analysis(self, snap: Snapshot, namespace: str | None) -> Analysis:
+        """Dependencies cross namespaces (shop -> data), so component analysis always uses the whole cluster."""
+        return Analysis(snap if not namespace else self._snap(None))
+
     def _meta(self, snap: Snapshot) -> dict[str, Any]:
         return {"source": self.source.name, "as_of": snap.now.isoformat(), "warnings": snap.warnings}
 
@@ -117,13 +199,47 @@ class KubePilot:
             [i for i in security.triage(snap, self.allowlist) if i.score >= 45], namespace, include_system
         )
         unhealthy_nodes = [n.name for n in snap.nodes if not n.ready]
+        analysis = self._analysis(snap, namespace)
+        comp_rows = []
+        for c in analysis.components:
+            if namespace and c.namespace != k8s_name(namespace):
+                continue
+            fs = analysis.findings[c.key]
+            top = max(fs, key=lambda f: f.severity, default=None)
+            comp_rows.append(
+                {
+                    "component": c.label,
+                    "status": components.status_of(fs),
+                    "issues": len([f for f in fs if f.severity >= Severity.MEDIUM]),
+                    "top_issue": clean(top.title, 160) if top and top.severity >= Severity.MEDIUM else None,
+                }
+            )
+        root_cause: dict[str, str] = {}
+        for wl in {f.workload for f in findings}:
+            up = dependencies.upstream_findings(
+                wl, snap.pods_of(wl), [f for f in findings if f.workload == wl], analysis.edges, analysis.findings
+            )
+            first = max(up, key=lambda f: f.severity, default=None)
+            if first is not None and first.title.startswith("Likely root cause: "):
+                root_cause[wl.key] = first.title.removeprefix("Likely root cause: ")
+        order = {"down": 0, "critical": 1, "degraded": 2, "at-risk": 3, "healthy": 4}
+        comp_rows.sort(key=lambda r: (order.get(str(r["status"]), 9), -int(str(r["issues"]))))
         return {
             **self._meta(snap),
             "workloads": len(snap.workloads()),
             "pods": len(snap.pods),
             "nodes": {"total": len(snap.nodes), "not_ready": unhealthy_nodes},
             "reliability_issues": [
-                {"workload": f.workload.key, "severity": f.severity.label, "title": clean(f.title, 160)}
+                {
+                    "workload": f.workload.key,
+                    "severity": f.severity.label,
+                    "title": clean(f.title, 160),
+                    **(
+                        {"likely_root_cause": clean(root_cause[f.workload.key], 160)}
+                        if f.workload.key in root_cause
+                        else {}
+                    ),
+                }
                 for f in findings[:MAX_ITEMS]
             ],
             "security_incidents": [
@@ -135,15 +251,17 @@ class KubePilot:
                 }
                 for i in incidents[:MAX_ITEMS]
             ],
+            "components": comp_rows[:MAX_ITEMS],
             "platform_incidents_hidden": hidden,
-            "next_steps": "Use diagnose_workload or investigate_security for details on any item."
+            "next_steps": "Use diagnose_workload, diagnose_component or investigate_security for details on any item."
             + (" Pass include_system=true to also see platform namespaces." if hidden else ""),
         }
 
     def diagnose_workload(self, namespace: str, name: str, include_hygiene: bool = True) -> dict[str, Any]:
         snap = self._snap(namespace)
         wl = self._workload(snap, namespace, name)
-        findings = diagnose.diagnose_workload(snap, wl, include_hygiene=include_hygiene)
+        analysis = self._analysis(snap, namespace)
+        findings, signals, deps = self._diagnose(snap, wl, analysis, include_hygiene)
         pods = snap.pods_of(wl)
         lr = diagnose.latest_rollout(snap, wl)
         rollout: dict[str, Any] | None = None
@@ -178,6 +296,16 @@ class KubePilot:
                 for p in pods[:10]
             ],
             "latest_rollout": rollout,
+            "depends_on": [
+                {
+                    "component": e.component_label,
+                    "service": e.service,
+                    "via_env": e.env_var,
+                    "status": components.status_of(analysis.findings.get(e.component, [])),
+                }
+                for e in deps
+            ],
+            "log_signals": [_signal(x) for x in signals],
             "findings": [finding_dict(f) for f in findings],
         }
 
@@ -185,6 +313,14 @@ class KubePilot:
         snap = self._snap(namespace)
         sev = Severity[min_severity.upper()]
         findings = diagnose.diagnose_all(snap, include_hygiene=sev <= Severity.LOW, min_severity=sev)
+        analysis = self._analysis(snap, namespace)
+        seen = {f.id for f in findings}
+        for fs in analysis.findings.values():
+            findings += [f for f in fs if f.severity >= sev and f.id not in seen]
+        for wl in {f.workload for f in findings if f.workload.kind != "Component"}:
+            own = [f for f in findings if f.workload == wl]
+            findings += dependencies.upstream_findings(wl, snap.pods_of(wl), own, analysis.edges, analysis.findings)
+        findings.sort(key=lambda f: (-f.severity, f.workload.key))
         return {
             **self._meta(snap),
             "count": len(findings),
@@ -298,17 +434,42 @@ class KubePilot:
             raise RuntimeError("GitOps change flow disabled: set KUBEPILOT_GITOPS_REPO to a local clone")
         return self.plans
 
+    def _target(
+        self, snap: Snapshot, analysis: Analysis, namespace: str, name: str
+    ) -> tuple[WorkloadRef, Component | None]:
+        """A workload, or a component (Kafka/Redis/...) by name. Components target their CR or controller."""
+        ns, nm = k8s_name(namespace), k8s_name(name)
+        wl = snap.find_workload(ns, nm)
+        comp = analysis.owning(wl) if wl else analysis.find(ns, nm)
+        if wl is None and comp is None:
+            raise NotFound(f"no workload, pod or component named {name!r} in namespace {namespace!r}")
+        if comp is not None and (wl is None or comp.name == nm):
+            return comp.ref, comp
+        assert wl is not None
+        return wl, comp
+
     def plan_remediation(self, namespace: str, name: str, kinds: list[str] | None = None) -> dict[str, Any]:
         store = self._require_plans()
         snap = self._snap(namespace)
-        wl = self._workload(snap, namespace, name)
-        findings = diagnose.diagnose_workload(snap, wl)
+        analysis = self._analysis(snap, namespace)
+        wl, comp = self._target(snap, analysis, namespace, name)
+        findings: list[Finding] = []
+        if snap.pods_of(wl):
+            findings = diagnose.diagnose_workload(snap, wl, log_signals=self._log_signals(snap, wl))
+        if comp is not None:
+            findings += analysis.findings.get(comp.key, [])
         inc = next((i for i in security.triage(snap, self.allowlist) if i.workload == wl), None)
         reliability: dict[str, RemediationHint] = {}
-        for f in findings:
+        sec: dict[str, RemediationHint] = {}
+        source_of: dict[str, list[Finding]] = {}
+        comp_ids = {f.id for f in analysis.findings.get(comp.key, [])} if comp else set()
+        # Component checks know the system (JVM heap, Kafka config): their hints win over generic ones.
+        for f in sorted(findings, key=lambda f: (-f.severity, f.id not in comp_ids)):
             for h in f.remediations:
-                reliability.setdefault(h.kind, h)
-        sec: dict[str, RemediationHint] = {h.kind: h for h in inc.remediations} if inc else {}
+                (sec if f.category == "security" else reliability).setdefault(h.kind, h)
+                source_of.setdefault(h.kind, []).append(f)
+        for h in inc.remediations if inc else []:
+            sec.setdefault(h.kind, h)  # component-specific hints (scoped selectors, client namespaces) win
         hints = {**sec, **reliability}
         if kinds:
             unknown = set(kinds) - set(hints)
@@ -318,16 +479,26 @@ class KubePilot:
         else:
             # One concern per PR: reliability fixes first; otherwise security hardening.
             # Opt-in only: rollback-template (supersedes field edits) and isolate-workload (cuts traffic).
-            pool = reliability if findings else sec
+            auto = {k: h for k, h in reliability.items() if k in remediation.AUTOMATABLE}
+            pool = auto or reliability or sec
             selected = [h for h in pool.values() if h.kind not in ("rollback-template", "isolate-workload")]
-        evidence = "; ".join(clean(f.explanation, 300) for f in findings[:2])
-        if inc:
+        addressed = {f.id: f for h in selected for f in source_of.get(h.kind, [])}
+        evidence = "; ".join(clean(f.explanation, 300) for f in list(addressed.values())[:2])
+        if inc and any(h.kind in sec for h in selected):
             evidence = (evidence + " | " if evidence else "") + clean(inc.summary, 300)
         result = remediation.build(store.repo, snap, wl, selected)
-        plan, token = store.create(wl, result, evidence or "operator request")
+        plan, token = store.create(
+            wl,
+            result,
+            evidence or "operator request",
+            addresses=[{"id": f.id, "title": clean(f.title, 200)} for f in addressed.values()],
+        )
+        return self._plan_out(store, plan, token, sorted(hints))
+
+    def _plan_out(self, store: PlanStore, plan: ChangePlan, token: str, available: list[str]) -> dict[str, Any]:
         out = plan.public()
         out["approval_token"] = token
-        out["available_kinds"] = sorted(hints)
+        out["available_kinds"] = available
         out["instructions"] = (
             "Show the diff, notes and policy results to the human and get explicit approval before calling "
             "commit_plan. Nothing touches the cluster: commit_plan creates a Git branch for review."
@@ -338,6 +509,154 @@ class KubePilot:
             )
         )
         return out
+
+    def verify_fix(self, plan_id: str) -> dict[str, Any]:
+        """After a plan's PR is merged and synced: are the findings it targeted actually gone?"""
+        store = self._require_plans()
+        plan = store.get(plan_id)
+        merged = merge_state(store.repo, plan)
+        snap = self._snap(plan.workload.namespace)
+        analysis = self._analysis(snap, plan.workload.namespace)
+        current: list[Finding] = []
+        wl = plan.workload
+        if snap.pods_of(wl):
+            current = self._diagnose(snap, wl, analysis, include_hygiene=True)[0]
+        comp = analysis.owning(wl) or next((c for c in analysis.components if c.ref == wl), None)
+        if comp is not None:
+            current += analysis.findings.get(comp.key, [])
+        ids = {f.id for f in current}
+        still = [a for a in plan.addresses if a["id"] in ids]
+        gone = [a for a in plan.addresses if a["id"] not in ids]
+        apps = [
+            {
+                "application": cr.name,
+                "sync": clean(str((cr.status.get("sync") or {}).get("status") or "unknown"), 30),
+                "health": clean(str((cr.status.get("health") or {}).get("status") or "unknown"), 30),
+            }
+            for cr in snap.custom_resources
+            if cr.kind == "Application" and ((cr.spec.get("destination") or {}).get("namespace")) == wl.namespace
+        ]
+        if merged["state"] != "merged":
+            verdict = "not-merged"
+        elif not plan.addresses:
+            verdict = "merged (no tracked findings to compare)"
+        elif not still:
+            verdict = "fixed"
+        elif any(a["sync"] == "OutOfSync" for a in apps):
+            verdict = "merged-awaiting-sync"
+        else:
+            verdict = "merged-but-not-fixed"
+        hint = {
+            "fixed": "The targeted findings are gone from the live cluster.",
+            "not-merged": "Merge the PR, let your GitOps controller sync, then verify again.",
+            "merged-awaiting-sync": "Your GitOps controller has not applied the change yet; check again shortly.",
+            "merged-but-not-fixed": "The change is live but the problem remains: diagnose again; plan_revert "
+            "undoes this change if it made things worse.",
+        }.get(verdict, "")
+        return {
+            **self._meta(snap),
+            "plan_id": plan.id,
+            "workload": wl.key,
+            "verdict": verdict,
+            "merge": merged,
+            "resolved": gone,
+            "still_present": still,
+            "new_findings": [
+                {"severity": f.severity.label, "title": clean(f.title, 200)}
+                for f in current
+                if f.severity >= Severity.HIGH and f.id not in {a["id"] for a in plan.addresses}
+            ][:10],
+            "gitops_applications": apps[:10],
+            "next": hint,
+        }
+
+    def plan_revert(self, plan_id: str) -> dict[str, Any]:
+        """A new plan that undoes a committed plan (same diff/policy/approval flow, nothing is auto-applied)."""
+        store = self._require_plans()
+        original = store.get(plan_id)
+        if original.status != "committed" or not original.commit:
+            raise ValueError(
+                f"plan {plan_id} is {original.status}; only committed plans can be reverted "
+                "(an unmerged branch can simply be closed)"
+            )
+        state = merge_state(store.repo, original)
+        changes = revert_changes(store.repo, original)
+        if not changes:
+            raise ValueError(f"nothing to revert: HEAD does not contain plan {plan_id}'s changes ({state['detail']})")
+        result = RemediationResult(
+            changes=changes,
+            applied=[f"revert: {a}" for a in original.applied] or [f"revert plan {plan_id}"],
+            manual=[],
+            notes=["Reverting restores the previous manifests, including any problem they had."]
+            + ([] if state["state"] == "merged" else [f"Plan {plan_id} may not be merged: {state['detail']}"]),
+        )
+        plan, token = store.create(
+            original.workload,
+            result,
+            f"Revert of plan {plan_id}: {original.evidence_summary}"[:600],
+            reverts=plan_id,
+        )
+        return self._plan_out(store, plan, token, [])
+
+    # ------------------------------------------------------------ components
+
+    def list_components(self, namespace: str | None = None) -> dict[str, Any]:
+        snap = self._snap(namespace)
+        analysis = self._analysis(snap, namespace)
+        rows = []
+        for c in analysis.components:
+            if namespace and c.namespace != k8s_name(namespace):
+                continue
+            fs = analysis.findings[c.key]
+            rows.append(
+                {
+                    "component": c.label,
+                    "kind": c.kind,
+                    "namespace": c.namespace,
+                    "name": c.name,
+                    "managed_by": clean(c.managed_by, 80),
+                    "version": clean(c.version, 60) or None,
+                    "members": f"{c.ready}/{c.desired} ready",
+                    "status": components.status_of(fs),
+                    "issues": {s.label: n for s in Severity if (n := sum(f.severity == s for f in fs))},
+                    "clients": sorted({e.client.key for e in dependencies.clients_of(analysis.edges, c.key)})[:10],
+                }
+            )
+        return {
+            **self._meta(snap),
+            "count": len(rows),
+            "components": rows[:50],
+            "next_steps": "diagnose_component(namespace, name) for checks, evidence and fixes.",
+        }
+
+    def diagnose_component(self, namespace: str, name: str) -> dict[str, Any]:
+        snap = self._snap(namespace)
+        analysis = self._analysis(snap, namespace)
+        comp = analysis.find(k8s_name(namespace), k8s_name(name))
+        if comp is None:
+            raise NotFound(
+                f"no Kafka/RabbitMQ/OpenSearch/Redis/PostgreSQL/... component named {name!r} in namespace {namespace!r}"
+            )
+        fs = analysis.findings[comp.key]
+        clients = dependencies.clients_of(analysis.edges, comp.key)
+        return {
+            **self._meta(snap),
+            "component": comp.label,
+            "kind": comp.kind,
+            "managed_by": clean(comp.managed_by, 80),
+            "version": clean(comp.version, 60) or None,
+            "remediation_target": comp.ref.key,
+            "status": components.status_of(fs),
+            "members": [
+                {"pod": p.name, "node": p.node, "phase": p.phase, "ready": all(c.ready for c in p.app_containers)}
+                for p in comp.pods[:20]
+            ],
+            "services": [
+                {"name": s.name, "type": s.type, "ports": [x.port for x in s.ports]} for s in comp.services[:10]
+            ],
+            "clients": [{"workload": e.client.key, "service": e.service, "via_env": e.env_var} for e in clients[:20]],
+            "findings": [finding_dict(f) for f in fs],
+        }
 
     def commit_plan(self, plan_id: str, approval_token: str) -> dict[str, Any]:
         store = self._require_plans()

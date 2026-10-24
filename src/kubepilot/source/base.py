@@ -9,15 +9,20 @@ from typing import Any, Protocol
 from kubepilot import normalize
 from kubepilot.models import (
     BindingInfo,
+    CustomResource,
     Event,
     FalcoAlert,
     NetworkPolicyInfo,
     Node,
+    PDBInfo,
     Pod,
+    PVCInfo,
     ReplicaSetInfo,
     RoleInfo,
+    ServiceInfo,
     VulnerabilityReport,
     WorkloadRef,
+    WorkloadSpec,
 )
 
 Raw = dict[str, Any]
@@ -36,6 +41,11 @@ class RawCluster:
     roles: list[Raw] = field(default_factory=list)
     bindings: list[Raw] = field(default_factory=list)
     vulnerability_reports: list[Raw] = field(default_factory=list)
+    workloads: list[Raw] = field(default_factory=list)  # Deployments, StatefulSets, DaemonSets
+    pvcs: list[Raw] = field(default_factory=list)
+    services: list[Raw] = field(default_factory=list)
+    pdbs: list[Raw] = field(default_factory=list)
+    custom_resources: list[Raw] = field(default_factory=list)
 
 
 @dataclass
@@ -53,6 +63,11 @@ class Snapshot:
     vulnerability_reports: list[VulnerabilityReport]
     falco_alerts: list[FalcoAlert]
     warnings: list[str] = field(default_factory=list)  # e.g. "Trivy Operator CRDs not found"
+    specs: list[WorkloadSpec] = field(default_factory=list)
+    pvcs: list[PVCInfo] = field(default_factory=list)
+    services: list[ServiceInfo] = field(default_factory=list)
+    pdbs: list[PDBInfo] = field(default_factory=list)
+    custom_resources: list[CustomResource] = field(default_factory=list)
 
     @classmethod
     def build(
@@ -75,6 +90,11 @@ class Snapshot:
             vulnerability_reports=[normalize.vulnerability_report(v, owners) for v in raw.vulnerability_reports],
             falco_alerts=list(falco or []),
             warnings=list(warnings or []),
+            specs=[normalize.workload_spec(w) for w in raw.workloads],
+            pvcs=[normalize.pvc(p) for p in raw.pvcs],
+            services=[normalize.service(s) for s in raw.services],
+            pdbs=[normalize.pdb(p) for p in raw.pdbs],
+            custom_resources=[normalize.custom_resource(c) for c in raw.custom_resources],
         )
 
     # ------------------------------------------------------------ lookups
@@ -102,6 +122,9 @@ class Snapshot:
         rs = [r for r in self.replicasets if r.owner == wl]
         return sorted(rs, key=lambda r: (r.revision or 0, r.created_at or self.now))
 
+    def spec_of(self, wl: WorkloadRef) -> WorkloadSpec | None:
+        return next((s for s in self.specs if s.ref == wl), None)
+
     def events_for(self, wl: WorkloadRef) -> list[Event]:
         names = {p.name for p in self.pods_of(wl)} | {r.name for r in self.replicasets_of(wl)} | {wl.name}
         return [e for e in self.events if e.namespace == wl.namespace and e.involved_name in names]
@@ -113,3 +136,19 @@ class ClusterSource(Protocol):
     name: str
 
     def snapshot(self, namespace: str | None = None) -> Snapshot: ...
+
+
+LOG_TAIL_LINES = 200
+LOG_LIMIT_BYTES = 64 * 1024
+
+
+def read_logs(source: object, namespace: str, pod: str, container: str, previous: bool) -> str | None:
+    """Tail of a container's log if the source supports it (optional capability). Never raises."""
+    fn = getattr(source, "logs", None)
+    if fn is None:
+        return None
+    try:
+        text = fn(namespace, pod, container, previous)
+    except Exception:
+        return None
+    return text if isinstance(text, str) else None

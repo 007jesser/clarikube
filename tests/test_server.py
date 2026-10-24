@@ -44,7 +44,13 @@ async def test_tools_listed_with_annotations(kp: KubePilot) -> None:
             "change_history",
             "find_problems",
             "recent_events",
+            "list_components",
+            "diagnose_component",
+            "verify_fix",
+            "plan_revert",
         } <= set(tools)
+        assert tools["verify_fix"].annotations.read_only_hint is True
+        assert tools["plan_revert"].annotations.read_only_hint is False
         assert tools["cluster_health"].annotations.read_only_hint is True
         assert tools["commit_plan"].annotations.read_only_hint is False
         prompts = {p.name for p in (await client.list_prompts()).prompts}
@@ -122,3 +128,13 @@ def test_alert_retention() -> None:
     store.add_raw(old)
     store.add_raw(_falco())
     assert store.prune(datetime.now(UTC)) == 1
+
+
+async def test_component_tools_via_mcp(kp: KubePilot) -> None:
+    async with Client(create_server(kp)) as client:
+        comps = payload(await client.call_tool("list_components", {"namespace": "data"}))
+        assert comps["count"] == 5
+        d = payload(await client.call_tool("diagnose_component", {"namespace": "data", "name": "search"}))
+        assert d["status"] == "down"
+        missing = await client.call_tool("diagnose_component", {"namespace": "data", "name": "nope"})
+        assert missing.is_error

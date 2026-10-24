@@ -1,0 +1,38 @@
+# shop/reports: needs OpenSearch and Redis; exits when search is unreachable (like a real app would).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reports
+  namespace: shop
+  labels: {app: reports}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: reports}
+  template:
+    metadata:
+      labels: {app: reports}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: reports
+          image: busybox:1.36
+          env:
+            - {name: SEARCH_URL, value: "http://search.data:9200"}
+            - {name: REDIS_URL, value: "redis://cache.data:6379"}
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "reports starting"
+              while true; do
+                if ! wget -q -T 3 -O /dev/null "$SEARCH_URL"; then
+                  echo "ERROR connect ECONNREFUSED search.data:9200"
+                  exit 1
+                fi
+                sleep 10
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 32Mi}

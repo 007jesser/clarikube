@@ -1,0 +1,60 @@
+# Product search
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: search
+  labels:
+    app: search
+spec:
+  replicas: 1
+  serviceName: search-headless
+  selector:
+    matchLabels:
+      app: search
+  template:
+    metadata:
+      labels:
+        app: search
+    spec:
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.13.0
+          ports:
+            - containerPort: 9200
+            - containerPort: 9300
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+            - name: DISABLE_SECURITY_PLUGIN
+              value: "true"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 9200
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+spec:
+  type: LoadBalancer   # TODO: was for a demo, remove
+  selector:
+    app: search
+  ports:
+    - name: http
+      port: 9200

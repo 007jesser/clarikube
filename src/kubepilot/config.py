@@ -29,6 +29,7 @@ class Settings:
     plan_ttl: timedelta
     falco_window: timedelta
     ingest_token: str | None
+    read_logs: bool = False
     system_namespaces: frozenset[str] = frozenset(
         {"kube-system", "kube-public", "kube-node-lease", "falco", "trivy-system"}
     )
@@ -61,6 +62,8 @@ class Settings:
             plan_ttl=timedelta(minutes=int(os.environ.get("KUBEPILOT_PLAN_TTL_MINUTES", "30"))),
             falco_window=timedelta(hours=int(os.environ.get("KUBEPILOT_FALCO_WINDOW_HOURS", "24"))),
             ingest_token=os.environ.get("KUBEPILOT_INGEST_TOKEN") or None,
+            # Fixture logs are bundled demo data; real cluster logs are opt-in (needs pods/log RBAC).
+            read_logs=_bool("KUBEPILOT_READ_LOGS", src == "fixture"),
             **(
                 {"system_namespaces": frozenset(n.strip() for n in sysns.split(",") if n.strip())}
                 if (sysns := os.environ.get("KUBEPILOT_SYSTEM_NAMESPACES")) is not None

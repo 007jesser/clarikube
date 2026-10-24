@@ -36,6 +36,46 @@ AI:  checkout is OOMKilled (10 restarts). Revision 2, rolled out at 21:28, lower
 | Model | Usually one vendor | **Any MCP client**; the logic lives in the server |
 | Guardrails | Prompting | Policy guard, plan expiry, stale-plan detection, approval token, optional human CLI approval, dry-run by default |
 | Prompt injection | Ignored | All cluster text is sanitized and injection attempts are **flagged** as data |
+| Data systems | Treated like any pod | **Knows Kafka, RabbitMQ, OpenSearch/Elasticsearch, Redis, PostgreSQL, MongoDB**: quorum, replication, JVM heap, storage, auth, exposure — and traces an app's failure to the broken dependency |
+
+## It understands what runs in your cluster
+
+Real clusters are mostly data systems and the apps that depend on them. kubepilot detects them — from
+operator resources (Strimzi, RabbitMQ operator, OpenSearch operator, ECK, CloudNativePG, Zalando,
+MongoDB community, OT Redis), Helm releases or plain StatefulSets — and checks what actually breaks them:
+
+```
+You:  "Why is orders crashing?"
+
+AI → diagnose_workload(shop/orders) → diagnose_component(data/events) → plan_remediation(data/events)
+
+AI:  orders is not the problem. It writes to Kafka data/events (env KAFKA_BOOTSTRAP_SERVERS) and its logs
+     show NotEnoughReplicasException. events has 2/3 brokers ready — broker 2's volume is Pending — and
+     min.insync.replicas = 3 = replication factor, so a single missing broker blocks every acks=all write.
+     Restarting orders won't help.
+
+     --- a/apps/data/kafka.yaml
+     +++ b/apps/data/kafka.yaml
+     -      min.insync.replicas: 3
+     +      min.insync.replicas: 2
+
+     Strimzi will roll the brokers one at a time. Commit plan 3f9c1e0a2b7d?
+```
+*(From the bundled demo: `kubepilot demo-diagnose shop orders`.)*
+
+| System | Checks (deterministic, each with evidence) |
+|---|---|
+| All | members ready / down, operator status conditions, PVC Pending/Lost, ephemeral storage, single instance, PDB missing, members on one node, no memory limit, no NetworkPolicy, client/admin port exposed via LoadBalancer/NodePort |
+| Kafka | RF > brokers, min.insync ≥ RF, fewer brokers than min.insync, RF 1, offsets topic RF, plaintext external listener, JVM heap vs limit |
+| OpenSearch / Elasticsearch | cluster health red/yellow, JVM heap vs limit (≤ 50%), security plugin disabled, single-node discovery |
+| RabbitMQ | even member count (quorum), management UI exposed |
+| Redis | no password / protected mode off |
+| PostgreSQL | `trust` auth, multi-replica *Deployment* (split brain) |
+| MongoDB | auth disabled |
+
+Connections between apps and data systems are inferred from env var values that point at a Service
+(`redis://cache.data:6379`, `kafka-0.kafka-brokers:9092`, …). Values are parsed in memory and **never
+returned** (they often embed passwords); only the env var name and Service name are shown.
 
 ## Try it in 1 minute (no cluster needed)
 
@@ -117,7 +157,11 @@ flowchart LR
 
 **Security triage:** per-workload score from Falco runtime alerts, Trivy CVEs, privileged/root/host access, missing NetworkPolicies and risky ServiceAccount RBAC, ×1.5 when runtime activity hits an exploitable or over-privileged workload. Every point is explained → [docs/scoring.md](docs/scoring.md). Known-benign alerts are suppressed with an [allowlist](src/kubepilot/demo/allowlist.yaml); platform namespaces (kube-system, falco, trivy-system) are hidden from cluster-wide security views unless you ask.
 
-**Automated fixes (as Git changes):** `set-memory-limit` · `set-memory-request` · `set-image` · `rollback-template` · `harden-security-context` · `restrict-ingress` · `isolate-workload`. Edits keep comments and formatting; new files are registered in `kustomization.yaml`. Everything else (rotate credentials, rebuild an image, reduce RBAC, create a missing Secret) is returned as guidance for a human.
+**Root cause across dependencies:** when an app fails and a data system it uses is unhealthy, the first finding says so ("Likely root cause: Kafka data/events is unhealthy"). With `KUBEPILOT_READ_LOGS=true` kubepilot also reads the last 200 lines of *failing* containers and extracts known error signatures (OOM, NotEnoughReplicas, connection refused, DNS, auth, disk full, …) to pick the right dependency. Logs are untrusted: only a signature and one sanitized line are returned, never the log.
+
+**Automated fixes (as Git changes):** `set-memory-limit` · `set-memory-request` · `set-image` · `rollback-template` · `harden-security-context` · `restrict-ingress` (scoped to known client namespaces) · `isolate-workload` · `add-pdb` · `make-service-internal` · `set-kafka-config`. They edit plain manifests, Kustomize bases, **operator custom resources** (Kafka, RabbitmqCluster, CNPG Cluster, …) and **Helm values** (Argo CD `valuesObject`/`valueFiles`, Flux `HelmRelease.spec.values`, `<release>/values*.yaml`) — a Helm value is changed only where its current content matches what is live, otherwise kubepilot refuses. Edits keep comments and formatting; new files are registered in `kustomization.yaml`. Everything else (rotate credentials, enable auth, rebuild an image, reduce RBAC, create a missing Secret) is returned as guidance for a human.
+
+**After the merge:** `verify_fix` checks the plan's commit reached the base branch (also after squash merges), reads Argo CD sync/health, and confirms the targeted findings are gone. `plan_revert` creates a reviewed revert plan when a change made things worse.
 
 ## MCP tools
 
@@ -125,12 +169,16 @@ flowchart LR
 |---|---|---|
 | `cluster_health` | read | Start here: broken workloads, high-risk incidents, nodes |
 | `find_problems` | read | All findings above a severity |
-| `diagnose_workload` | read | Root cause + rollout diff + fix options |
+| `diagnose_workload` | read | Root cause (incl. broken dependencies and log signatures) + rollout diff + fix options |
+| `list_components` | read | Data systems: kind, operator/Helm/manifests, members ready, status, clients |
+| `diagnose_component` | read | Kafka/RabbitMQ/OpenSearch/Redis/PostgreSQL/... checks with evidence and fixes |
 | `security_triage` | read | Ranked, correlated security incidents |
 | `investigate_security` | read | RBAC, NetworkPolicy, security context, CVEs for one workload |
 | `recent_events` | read | Warning events, sanitized |
 | `plan_remediation` | plan | Diff + policy result + notes + approval token (writes nothing) |
 | `commit_plan` | write (Git only) | Commit an approved plan to a new branch / PR |
+| `verify_fix` | read | Merged? synced? findings gone? |
+| `plan_revert` | plan | Revert plan for a committed change (same approval flow) |
 | `list_plans`, `change_history` | read | Plans and audit log |
 
 Prompts: `triage_cluster`, `fix_workload`, `incident_response`.
@@ -151,6 +199,7 @@ Prompts: `triage_cluster`, `fix_workload`, `incident_response`.
 | `KUBEPILOT_APPROVAL_MODE` | `token` | `cli` additionally requires `kubepilot approve <id>` by a human |
 | `KUBEPILOT_PLAN_TTL_MINUTES` | `30` | plan expiry |
 | `KUBEPILOT_INGEST_TOKEN` | — | **required** bearer token for the Falco webhook |
+| `KUBEPILOT_READ_LOGS` | `false` (`true` in fixture mode) | read error signatures from failing containers' logs; needs the optional `kubepilot-logs` ClusterRole in `deploy/rbac.yaml` |
 
 ## CLI
 
@@ -167,14 +216,15 @@ kubepilot capture --out DIR [-n ns]        snapshot a cluster into a fixture (en
 ## Status and limitations
 
 kubepilot is **alpha**. Known limits:
-- Fixes target plain manifests and Kustomize; Helm-templated files are skipped (Helm values editing is next).
+- Helm: values are edited, chart templates never; a value the chart only sets by default must be set explicitly first. The rendered diff is checked by your CD tool, not by kubepilot's policy guard.
+- Operator CRD versions are listed in `source/crds.py`; operators not on the list are seen as plain StatefulSets. Strimzi KRaft node pools are read but sized from the `Kafka` resource.
+- Data-system checks read Kubernetes state only (no client connections): topic-level settings, consumer lag and shard allocation details are out of scope.
 - Rollback compares image and resources only, not env/args/probes.
-- Pod logs are not read yet (main prompt-injection surface; planned behind stronger sanitization).
 - Tested end to end with Claude; smaller/local models are not benchmarked yet.
 - The Falco alert store is local SQLite (single replica).
 
 ## Roadmap
-Helm values editing · Argo CD / Flux sync & health watch after merge (auto-revert PR on regression) · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
+Flux Kustomization/HelmRelease status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
 
 ## Contributing & security
 Issues and PRs welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately, per [SECURITY.md](SECURITY.md).

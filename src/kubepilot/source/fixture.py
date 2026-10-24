@@ -19,7 +19,8 @@ from typing import Any
 import yaml
 
 from kubepilot import normalize
-from kubepilot.source.base import RawCluster, Snapshot
+from kubepilot.source.base import LOG_LIMIT_BYTES, RawCluster, Snapshot
+from kubepilot.source.crds import CR_GROUPS
 
 _KIND_FIELD = {
     "Pod": "pods",
@@ -33,6 +34,12 @@ _KIND_FIELD = {
     "RoleBinding": "bindings",
     "ClusterRoleBinding": "bindings",
     "VulnerabilityReport": "vulnerability_reports",
+    "Deployment": "workloads",
+    "StatefulSet": "workloads",
+    "DaemonSet": "workloads",
+    "PersistentVolumeClaim": "pvcs",
+    "Service": "services",
+    "PodDisruptionBudget": "pdbs",
 }
 _CLUSTER_SCOPED = {"Node", "ClusterRole", "ClusterRoleBinding"}
 
@@ -71,6 +78,8 @@ class FixtureSource:
             for doc in yaml.safe_load_all(f.read_text()):
                 for obj in _iter_objects(doc):
                     attr = _KIND_FIELD.get(obj.get("kind", ""))
+                    if attr is None and str(obj.get("apiVersion", "")).split("/")[0] in CR_GROUPS:
+                        attr = "custom_resources"
                     if attr:
                         getattr(self._raw, attr).append(obj)
         self._falco = []
@@ -79,6 +88,13 @@ class FixtureSource:
             for line in falco.read_text().splitlines():
                 if line.strip():
                     self._falco.append(normalize.falco_alert(json.loads(line)))
+
+    def logs(self, namespace: str, pod: str, container: str, previous: bool) -> str | None:
+        """Demo logs live in ``logs/<pod>__<container>.log`` (namespace is implied by the unique pod name)."""
+        f = self.dir / "logs" / f"{pod}__{container}.log"
+        if "/" in pod + container or not f.is_file():
+            return None
+        return f.read_bytes()[-LOG_LIMIT_BYTES:].decode("utf-8", "replace")
 
     def snapshot(self, namespace: str | None = None) -> Snapshot:
         raw = self._raw

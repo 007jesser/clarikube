@@ -1,0 +1,35 @@
+# Redis cache, installed from the Bitnami chart by Argo CD
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cache
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  source:
+    repoURL: registry-1.docker.io/bitnamicharts
+    chart: redis
+    targetRevision: 19.6.0
+    helm:
+      releaseName: cache
+      valuesObject:
+        architecture: standalone
+        auth:
+          enabled: false
+        image:
+          repository: bitnami/redis
+          tag: 7.2.5
+        master:
+          persistence:
+            enabled: false
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+  syncPolicy:
+    automated: {}

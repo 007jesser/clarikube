@@ -14,19 +14,31 @@ from typing import Any
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from kubepilot import quantity
+from kubepilot.gitops import helm
 from kubepilot.gitops import manifests as mf
 from kubepilot.models import RemediationHint, WorkloadRef
 from kubepilot.policy import PolicyResult, compare
 from kubepilot.source.base import Snapshot
 
-AUTOMATABLE = {
+FIELD_KINDS = {
     "set-memory-limit",
     "set-memory-request",
     "set-image",
     "rollback-template",
     "harden-security-context",
-    "restrict-ingress",
-    "isolate-workload",
+    "set-kafka-config",
+}
+NEW_FILE_KINDS = {"restrict-ingress", "isolate-workload", "add-pdb"}
+SERVICE_KINDS = {"make-service-internal"}
+AUTOMATABLE = FIELD_KINDS | NEW_FILE_KINDS | SERVICE_KINDS
+HELM_KINDS = {"set-memory-limit", "set-memory-request", "set-image"}
+# Operator CRs whose resources live outside a pod template: kind -> path of the map holding "resources".
+_CR_RESOURCES: dict[str, tuple[str, ...]] = {
+    "Kafka": ("spec", "kafka"),
+    "KafkaNodePool": ("spec",),
+    "RabbitmqCluster": ("spec",),
+    "Cluster": ("spec",),  # CloudNativePG
+    "postgresql": ("spec",),  # Zalando
 }
 _VOLATILE_LABELS = {
     "pod-template-hash",
@@ -49,16 +61,17 @@ class FileChange:
     before: str | None  # None => new file
     after: str
     policy: list[PolicyResult] = field(default_factory=list)
+    deleted: bool = False
 
     def diff(self) -> str:
         a = (self.before or "").splitlines(keepends=True)
-        b = self.after.splitlines(keepends=True)
+        b = [] if self.deleted else self.after.splitlines(keepends=True)
         return "".join(
             difflib.unified_diff(
                 a,
                 b,
                 fromfile="/dev/null" if self.before is None else f"a/{self.path}",
-                tofile=f"b/{self.path}",
+                tofile="/dev/null" if self.deleted else f"b/{self.path}",
             )
         )
 
@@ -74,8 +87,19 @@ class RemediationResult:
 # ---------------------------------------------------------------- edit helpers
 
 
+def _resources_owner(doc: CommentedMap, cname: str) -> CommentedMap:
+    """The map that holds ``resources`` for a container: the container itself, or a section of an operator CR."""
+    path = _CR_RESOURCES.get(str(doc.get("kind")))
+    if path is None:
+        return mf.container(doc, cname)
+    node: CommentedMap = doc
+    for key in path:
+        node = mf.ensure_map(node, key)
+    return node
+
+
 def _set_limit(doc: CommentedMap, cname: str, section: str, res: str, value: str) -> str:
-    c = mf.container(doc, cname)
+    c = _resources_owner(doc, cname)
     resources = mf.ensure_map(c, "resources")
     target = mf.ensure_map(resources, section)
     old = target.get(res)
@@ -127,8 +151,42 @@ def _selector_labels(doc: CommentedMap, snap: Snapshot, wl: WorkloadRef) -> dict
     raise RemediationError("cannot determine pod labels for NetworkPolicy selector")
 
 
-def _netpol(wl: WorkloadRef, labels: dict[str, str], mode: str) -> dict[str, Any]:
-    name = f"kubepilot-{wl.name}-{'isolate' if mode == 'isolate' else 'ingress'}"[:63].rstrip("-")
+def _managed_meta(name: str, namespace: str, reason: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "namespace": namespace,
+        "labels": {"app.kubernetes.io/managed-by": "kubepilot"},
+        "annotations": {"kubepilot.io/reason": reason},
+    }
+
+
+def _pdb(name: str, namespace: str, labels: dict[str, str], max_unavailable: int) -> dict[str, Any]:
+    return {
+        "apiVersion": "policy/v1",
+        "kind": "PodDisruptionBudget",
+        "metadata": _managed_meta(name, namespace, "Voluntary disruptions (drains, upgrades) one member at a time"),
+        "spec": {"maxUnavailable": max_unavailable, "selector": {"matchLabels": labels}},
+    }
+
+
+def _parse_selector(text: str) -> dict[str, str]:
+    out = {}
+    for part in text.split(","):
+        k, sep, v = part.strip().partition("=")
+        if not sep or not k:
+            raise RemediationError(f"invalid selector {text!r}")
+        out[k] = v
+    return out
+
+
+def _netpol(
+    wl: WorkloadRef,
+    labels: dict[str, str],
+    mode: str,
+    from_namespaces: list[str] | None = None,
+    name: str | None = None,
+) -> dict[str, Any]:
+    name = (name or f"kubepilot-{wl.name}-{'isolate' if mode == 'isolate' else 'ingress'}")[:63].rstrip("-")
     meta = {
         "name": name,
         "namespace": wl.namespace,
@@ -137,7 +195,9 @@ def _netpol(wl: WorkloadRef, labels: dict[str, str], mode: str) -> dict[str, Any
             "kubepilot.io/reason": (
                 "Emergency containment: deny all ingress and egress"
                 if mode == "isolate"
-                else "Restrict ingress to pods in the same namespace (tune to real callers)"
+                else "Restrict ingress to pods in the same namespace"
+                + (f" and namespaces {', '.join(from_namespaces)}" if from_namespaces else "")
+                + " (tune to real callers)"
             )
         },
     }
@@ -146,7 +206,11 @@ def _netpol(wl: WorkloadRef, labels: dict[str, str], mode: str) -> dict[str, Any
         spec["policyTypes"] = ["Ingress", "Egress"]  # no rules => deny all
     else:
         spec["policyTypes"] = ["Ingress"]
-        spec["ingress"] = [{"from": [{"podSelector": {}}]}]
+        peers: list[dict[str, Any]] = [{"podSelector": {}}]
+        peers += [
+            {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": ns}}} for ns in from_namespaces or []
+        ]
+        spec["ingress"] = [{"from": peers}]
     return {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy", "metadata": meta, "spec": spec}
 
 
@@ -164,7 +228,133 @@ def _register_in_kustomization(repo: Path, directory: Path, filename: str) -> Fi
     return FileChange(path=str(rel), before=ef.original, after=ef.render())
 
 
-# ---------------------------------------------------------------- main entry
+def _namespace_dir(repo: Path, namespace: str) -> Path | None:
+    """Directory holding most manifests of a namespace (where new objects for it should go)."""
+    counts: dict[Path, int] = {}
+    for d in mf.scan(repo):
+        if d.namespace == namespace:
+            counts[d.path.parent] = counts.get(d.path.parent, 0) + 1
+    return max(counts, key=lambda p: (counts[p], -len(p.parts))) if counts else None
+
+
+def _helm_release(snap: Snapshot, wl: WorkloadRef) -> str | None:
+    spec = snap.spec_of(wl)
+    labels = dict(spec.labels) if spec else {}
+    for p in snap.pods_of(wl)[:1]:
+        labels = {**p.labels, **labels}
+    return labels.get("app.kubernetes.io/instance")
+
+
+class _Edit:
+    """One opened file being edited, plus the policy baseline of the edited document."""
+
+    def __init__(self, repo: Path, rel: Path, index: int) -> None:
+        self.ef = mf.EditableFile(repo, rel)
+        self.index = index
+        self.doc: CommentedMap = self.ef.docs[index]
+        self.before_plain = mf.to_plain(self.doc)
+
+    def change(self, check_policy: bool = True) -> FileChange | None:
+        after = self.ef.render()
+        if after == self.ef.original:
+            return None
+        policy = compare(self.before_plain, mf.to_plain(self.doc)) if check_policy else []
+        return FileChange(path=str(self.ef.rel), before=self.ef.original, after=after, policy=policy)
+
+
+def _helm_edits(
+    repo: Path, snap: Snapshot, wl: WorkloadRef, hints: list[RemediationHint], applied: list[str], notes: list[str]
+) -> list[FileChange]:
+    release = _helm_release(snap, wl)
+    if not release:
+        raise RemediationError(
+            f"no manifest for {wl.kind} {wl.namespace}/{wl.name} in the GitOps repo, and it has no "
+            "app.kubernetes.io/instance label to find Helm values by"
+        )
+    targets = helm.locate_values(repo, release, wl.namespace)
+    if not targets:
+        raise RemediationError(
+            f"{wl.key} looks Helm-managed (release {release!r}) but no values for it were found in the repo "
+            "(looked for Argo CD Applications, Flux HelmReleases and <release>/values*.yaml)"
+        )
+    edits: dict[str, tuple[_Edit, helm.ValuesTarget]] = {}
+
+    def open_target(t: helm.ValuesTarget) -> tuple[_Edit, CommentedMap]:
+        key = f"{t.path}#{t.index}"
+        if key not in edits:
+            edits[key] = (_Edit(repo, t.path, t.index), t)
+        e, _ = edits[key]
+        return e, helm.values_root(e.ef, t)
+
+    for h in hints:
+        p = h.params
+        matches: list[tuple[helm.ValuesTarget, helm.KeyPath, str]] = []
+        for t in targets:
+            _, values = open_target(t)
+            if h.kind in ("set-memory-limit", "set-memory-request"):
+                section = "limits" if h.kind == "set-memory-limit" else "requests"
+                matches += [(t, kp, "") for kp in helm.memory_paths(values, section, p.get("current"))]
+            elif h.kind == "set-image":
+                matches += [(t, kp, how) for kp, how in helm.image_paths(values, p.get("current", ""))]
+        if not matches:
+            raise RemediationError(
+                f"{h.kind}: release {release!r} values don't contain the live value "
+                f"({p.get('current') or 'unknown'}); the chart may use a default — set it explicitly first"
+            )
+        if len(matches) > 1:
+            where = ", ".join(f"{t.describe()}:{helm.fmt(kp)}" for t, kp, _ in matches[:5])
+            raise RemediationError(f"{h.kind}: ambiguous, the live value appears in several places: {where}")
+        t, kp, how = matches[0]
+        _, values = open_target(t)
+        new = p["proposed"].rpartition(":")[2] if h.kind == "set-image" and how == "tag" else p["proposed"]
+        old = helm.set_in(values, kp, new)
+        applied.append(f"Helm values ({t.source}) {t.describe()}: {helm.fmt(kp)} {old} → {new}")
+    notes.append(
+        f"Edited Helm values of release {release!r}; the chart renders the final manifest — check the "
+        "rendered diff in your CD tool (e.g. Argo CD app diff) before merging."
+    )
+    out = []
+    for e, _ in edits.values():
+        ch = e.change(check_policy=False)
+        if ch:
+            out.append(ch)
+    return out
+
+
+def _service_internal(
+    repo: Path, wl: WorkloadRef, names: list[str], applied: list[str], manual: list[str]
+) -> list[FileChange]:
+    out = []
+    for name in names:
+        docs = mf.locate(repo, WorkloadRef(kind="Service", namespace=wl.namespace, name=name))
+        if len(docs) != 1:
+            manual.append(
+                f"Service {wl.namespace}/{name} is {'not in' if not docs else 'ambiguous in'} the GitOps repo "
+                "(often generated by an operator or chart): change its type there, e.g. the operator's listener/"
+                "service config, to ClusterIP / internal."
+            )
+            continue
+        e = _Edit(repo, docs[0].path, docs[0].index)
+        spec = mf.ensure_map(e.doc, "spec")
+        old = spec.get("type", "ClusterIP")
+        spec["type"] = "ClusterIP"
+        for k in (
+            "loadBalancerSourceRanges",
+            "loadBalancerClass",
+            "loadBalancerIP",
+            "externalTrafficPolicy",
+            "allocateLoadBalancerNodePorts",
+            "externalIPs",
+        ):
+            spec.pop(k, None)
+        for port in spec.get("ports") or []:
+            if isinstance(port, dict):
+                port.pop("nodePort", None)
+        ch = e.change()
+        if ch:
+            out.append(ch)
+            applied.append(f"Service {name}: type {old} → ClusterIP")
+    return out
 
 
 def build(
@@ -175,42 +365,129 @@ def build(
 ) -> RemediationResult:
     automatable = [h for h in hints if h.kind in AUTOMATABLE]
     manual = [h.summary for h in hints if h.kind not in AUTOMATABLE]
+    applied: list[str] = []
+    notes: list[str] = []
+    changes: list[FileChange] = []
     if not automatable:
         return RemediationResult(changes=[], applied=[], manual=manual, notes=[])
 
     candidates = mf.locate(repo, wl)
-    if not candidates:
-        raise RemediationError(
-            f"no manifest for {wl.kind} {wl.namespace}/{wl.name} found in the GitOps repo "
-            "(v1 supports plain manifests and Kustomize; Helm-templated files are not editable)"
-        )
     if len(candidates) > 1:
         paths = ", ".join(f"{c.path}#{c.index}" for c in candidates)
         raise RemediationError(f"ambiguous: multiple manifests match {wl.key}: {paths}")
-    target = candidates[0]
-    ef = mf.EditableFile(repo, target.path)
-    doc: CommentedMap = ef.docs[target.index]
-    before_plain = mf.to_plain(doc)
+    target = candidates[0] if candidates else None
+    field_hints = [h for h in automatable if h.kind in FIELD_KINDS]
+    main: _Edit | None = None
+    if field_hints:
+        if target is None:
+            unsupported = [h.kind for h in field_hints if h.kind not in HELM_KINDS]
+            if unsupported:
+                raise RemediationError(
+                    f"no manifest for {wl.kind} {wl.namespace}/{wl.name} in the GitOps repo; "
+                    f"{', '.join(unsupported)} need the manifest (Helm values support: {', '.join(sorted(HELM_KINDS))})"
+                )
+            changes += _helm_edits(repo, snap, wl, field_hints, applied, notes)
+        else:
+            main = _Edit(repo, target.path, target.index)
+            if not main.ef.style_preserved:
+                notes.append(f"{target.path}: YAML indentation style not recognised; formatting may change.")
+            if target.namespace_source == "none":
+                notes.append(f"{target.path} has no namespace (none in metadata or kustomization); matched by name.")
+            _apply_field_edits(main.doc, snap, field_hints, applied, notes)
 
-    applied: list[str] = []
-    notes: list[str] = []
-    if not ef.style_preserved:
-        notes.append(f"{target.path}: YAML indentation style not recognised; formatting may change in the diff.")
-    if target.namespace_source == "none":
-        notes.append(f"{target.path} has no namespace (none in metadata or kustomization); matched by name only.")
+    new_dir = target.path.parent if target else _namespace_dir(repo, wl.namespace)
     new_files: list[FileChange] = []
-
     for h in automatable:
+        p = h.params
+        try:
+            if h.kind in ("restrict-ingress", "isolate-workload", "add-pdb"):
+                if new_dir is None:
+                    raise RemediationError(f"no directory for namespace {wl.namespace} in the GitOps repo")
+                if p.get("selector"):
+                    labels = _parse_selector(p["selector"])
+                elif main is not None:
+                    labels = _selector_labels(main.doc, snap, wl)
+                else:
+                    pods = snap.pods_of(wl)
+                    labels = {k: v for k, v in pods[0].labels.items() if k not in _VOLATILE_LABELS} if pods else {}
+                if not labels:
+                    raise RemediationError("cannot determine pod labels for the selector")
+                if h.kind == "add-pdb":
+                    obj = _pdb(
+                        p.get("name") or f"{wl.name}-pdb", wl.namespace, labels, int(p.get("max_unavailable") or 1)
+                    )
+                    applied.append(
+                        f"new PodDisruptionBudget {obj['metadata']['name']} (maxUnavailable "
+                        f"{obj['spec']['maxUnavailable']})"
+                    )
+                    notes.append(
+                        "A PDB blocks node drains while a member is already down; that is intended "
+                        "for quorum systems, but tell whoever runs cluster upgrades."
+                    )
+                else:
+                    mode = "isolate" if h.kind == "isolate-workload" else "ingress"
+                    from_ns = [n for n in (p.get("from_namespaces") or "").split(",") if n]
+                    obj = _netpol(wl, labels, mode, from_ns, p.get("name"))
+                    applied.append(f"new NetworkPolicy {obj['metadata']['name']} ({mode})")
+                    if mode == "ingress":
+                        notes.append(
+                            "The ingress policy allows pods in the same namespace"
+                            + (f" and namespaces {', '.join(from_ns)}" if from_ns else "")
+                            + "; monitoring scrapers or ingress controllers in other namespaces will be blocked "
+                            "unless added."
+                        )
+                    else:
+                        notes.append(
+                            "Isolation blocks ALL traffic including DNS and health checks from outside: the workload "
+                            "will be unreachable. Intended for containment during an incident."
+                        )
+                rel = str(new_dir / f"{obj['metadata']['name']}.yaml")
+                if (repo / rel).exists():
+                    raise RemediationError(f"{rel} already exists")
+                new_files.append(FileChange(path=rel, before=None, after=mf.dump_new(obj)))
+                kust = _register_in_kustomization(repo, new_dir, Path(rel).name)
+                if kust:
+                    # several new files in one plan: chain edits on the same kustomization
+                    prev = next((c for c in new_files if c.path == kust.path), None)
+                    if prev:
+                        new_files.remove(prev)
+                        kust = FileChange(
+                            path=kust.path,
+                            before=prev.before,
+                            after=prev.after.rstrip("\n") + f"\n- {Path(rel).name}\n",
+                        )
+                    new_files.append(kust)
+                    applied.append(f"registered {Path(rel).name} in {kust.path}")
+            elif h.kind == "make-service-internal":
+                names = [n for n in (p.get("services") or "").split(",") if n]
+                new_files += _service_internal(repo, wl, names, applied, manual)
+        except (KeyError, ValueError) as e:
+            raise RemediationError(f"{h.kind}: {e}") from e
+
+    if main is not None:
+        ch = main.change()
+        if ch:
+            changes.insert(0, ch)
+    changes.extend(new_files)
+    return RemediationResult(changes=changes, applied=applied, manual=manual, notes=notes)
+
+
+def _apply_field_edits(
+    doc: CommentedMap, snap: Snapshot, hints: list[RemediationHint], applied: list[str], notes: list[str]
+) -> None:
+    for h in hints:
         p = h.params
         try:
             if h.kind == "set-memory-limit":
                 applied.append(_set_limit(doc, p["container"], "limits", "memory", p["proposed"]))
-                req = (mf.container(doc, p["container"]).get("resources") or {}).get("requests") or {}
+                req = (_resources_owner(doc, p["container"]).get("resources") or {}).get("requests") or {}
                 if req.get("memory") and quantity.parse(str(req["memory"])) > quantity.parse(p["proposed"]):
                     applied.append(_set_limit(doc, p["container"], "requests", "memory", p["proposed"]))
+                if p.get("jvm"):
+                    notes.append("JVM heap left unchanged; keep it at or below 50-75% of the new limit.")
             elif h.kind == "set-memory-request":
                 applied.append(_set_limit(doc, p["container"], "requests", "memory", p["proposed"]))
-                lim = (mf.container(doc, p["container"]).get("resources") or {}).get("limits") or {}
+                lim = (_resources_owner(doc, p["container"]).get("resources") or {}).get("limits") or {}
                 if lim.get("memory") and quantity.parse(str(lim["memory"])) < quantity.parse(p["proposed"]):
                     notes.append("memory limit is below the new request; adjust it too")
             elif h.kind == "set-image":
@@ -246,40 +523,16 @@ def build(
                 a, n = _harden(doc)
                 applied += a
                 notes += n
-            elif h.kind in ("restrict-ingress", "isolate-workload"):
-                mode = "isolate" if h.kind == "isolate-workload" else "ingress"
-                np = _netpol(wl, _selector_labels(doc, snap, wl), mode)
-                rel = str(target.path.parent / f"{np['metadata']['name']}.yaml")
-                if (repo / rel).exists():
-                    raise RemediationError(f"{rel} already exists")
-                new_files.append(FileChange(path=rel, before=None, after=mf.dump_new(np)))
-                applied.append(f"new NetworkPolicy {np['metadata']['name']} ({mode})")
-                kust = _register_in_kustomization(repo, target.path.parent, Path(rel).name)
-                if kust:
-                    new_files.append(kust)
-                    applied.append(f"registered {Path(rel).name} in {kust.path}")
-                if mode == "ingress":
-                    notes.append(
-                        "The ingress policy allows all pods in the same namespace; tighten 'from' to real callers."
-                    )
-                else:
-                    notes.append(
-                        "Isolation blocks ALL traffic including DNS and health checks from outside: the workload "
-                        "will be unreachable. Intended for containment during an incident."
-                    )
+            elif h.kind == "set-kafka-config":
+                if doc.get("kind") != "Kafka":
+                    raise RemediationError("set-kafka-config only edits a Strimzi Kafka resource")
+                cfg = mf.ensure_map(mf.ensure_map(mf.ensure_map(doc, "spec"), "kafka"), "config")
+                old = cfg.get(p["key"])
+                cfg[p["key"]] = int(p["proposed"]) if p["proposed"].isdigit() else p["proposed"]
+                applied.append(f"Kafka config {p['key']}: {old} → {p['proposed']}")
+                notes.append(
+                    "Strimzi rolls the brokers one at a time to apply broker config changes; topics created "
+                    "with an explicit min.insync.replicas keep their own value (check with kafka-configs)."
+                )
         except KeyError as e:
             raise RemediationError(f"{h.kind}: {e}") from e
-
-    changes: list[FileChange] = []
-    after_text = ef.render()
-    if after_text != ef.original:
-        changes.append(
-            FileChange(
-                path=str(target.path),
-                before=ef.original,
-                after=after_text,
-                policy=compare(before_plain, mf.to_plain(doc)),
-            )
-        )
-    changes.extend(new_files)
-    return RemediationResult(changes=changes, applied=applied, manual=manual, notes=notes)

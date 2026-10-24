@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import IntEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -74,10 +74,23 @@ class SecurityContext(BaseModel):
         return self.run_as_non_root is not True
 
 
+class EnvVar(BaseModel):
+    """An env var. ``value`` is kept only for internal analysis (dependency hosts, JVM heap,
+    insecure flags) and must NEVER be returned to a model: it may hold a literal secret."""
+
+    name: str
+    value: str | None = Field(default=None, repr=False)
+    from_secret: bool = False
+    from_configmap: bool = False
+
+
 class Container(BaseModel):
     name: str
     image: str
     init: bool = False
+    env: list[EnvVar] = Field(default_factory=list, repr=False)
+    args: list[str] = Field(default_factory=list, repr=False)  # command + args, internal only
+    ports: list[int] = Field(default_factory=list)
     resources: Resources = Field(default_factory=Resources)
     security: SecurityContext = Field(default_factory=SecurityContext)
     has_liveness_probe: bool = False
@@ -153,6 +166,86 @@ class Node(BaseModel):
     allocatable_cpu: str | None = None
     allocatable_memory: str | None = None
     taints: list[str] = Field(default_factory=list)
+
+
+class WorkloadSpec(BaseModel):
+    """Desired vs. actual state of a controller (Deployment, StatefulSet, DaemonSet)."""
+
+    kind: str
+    namespace: str
+    name: str
+    labels: dict[str, str] = Field(default_factory=dict)
+    selector: dict[str, str] = Field(default_factory=dict)  # matchLabels
+    replicas: int = 1
+    ready_replicas: int = 0
+    containers: list[Container] = Field(default_factory=list)  # from the pod template
+    volume_claim_templates: list[str] = Field(default_factory=list)  # StatefulSet claim names
+    template_volumes: list[Volume] = Field(default_factory=list)
+    service_name: str | None = None  # StatefulSet governing service
+    owner: WorkloadRef | None = None  # e.g. operator CR owning a StatefulSet
+
+    @property
+    def ref(self) -> WorkloadRef:
+        return WorkloadRef(kind=self.kind, namespace=self.namespace, name=self.name)
+
+
+class PVCInfo(BaseModel):
+    namespace: str
+    name: str
+    phase: str = "Unknown"  # Pending | Bound | Lost
+    storage_class: str | None = None
+    requested: str | None = None
+    capacity: str | None = None
+
+
+class ServicePort(BaseModel):
+    port: int
+    target_port: str | None = None
+    node_port: int | None = None
+    name: str | None = None
+
+
+class ServiceInfo(BaseModel):
+    namespace: str
+    name: str
+    type: str = "ClusterIP"  # ClusterIP | NodePort | LoadBalancer | ExternalName
+    selector: dict[str, str] = Field(default_factory=dict)
+    ports: list[ServicePort] = Field(default_factory=list)
+    headless: bool = False
+    external: bool = False  # LoadBalancer/NodePort or externalIPs: reachable from outside the cluster
+
+    def dns_names(self) -> set[str]:
+        n, ns = self.name, self.namespace
+        return {n, f"{n}.{ns}", f"{n}.{ns}.svc", f"{n}.{ns}.svc.cluster.local"}
+
+
+class PDBInfo(BaseModel):
+    namespace: str
+    name: str
+    selector: LabelSelector
+    min_available: str | None = None
+    max_unavailable: str | None = None
+    disruptions_allowed: int | None = None
+
+
+class Condition(BaseModel):
+    type: str
+    status: str
+    reason: str | None = None
+    message: str | None = None
+
+
+class CustomResource(BaseModel):
+    """An operator-managed object (Strimzi Kafka, RabbitmqCluster, CNPG Cluster, ...)."""
+
+    group: str
+    kind: str
+    namespace: str
+    name: str
+    labels: dict[str, str] = Field(default_factory=dict)
+    spec: dict[str, Any] = Field(default_factory=dict, repr=False)
+    status: dict[str, Any] = Field(default_factory=dict, repr=False)
+    conditions: list[Condition] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- security inputs
@@ -269,6 +362,7 @@ class RemediationHint(BaseModel):
 class Finding(BaseModel):
     id: str
     workload: WorkloadRef
+    component: str | None = None  # e.g. "kafka data/events" when raised by a component pack
     category: Literal["reliability", "security", "config"]
     title: str
     severity: Severity

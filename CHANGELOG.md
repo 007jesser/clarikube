@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.2.0 (unreleased)
+Data systems and the full fix lifecycle.
+- Component detection: Kafka (Strimzi), RabbitMQ (operator), OpenSearch/Elasticsearch (operator, ECK), Redis, PostgreSQL (CloudNativePG, Zalando), MongoDB, plus Helm-installed and plain StatefulSets.
+- ~25 deterministic component checks: quorum, Kafka replication and min.insync, JVM heap vs limit, PVC state, PDB, spread, auth disabled, external exposure, operator status.
+- Dependency graph from env values (values never output) and "Likely root cause" findings that blame the broken dependency, ranked by log evidence.
+- Opt-in log signatures (`KUBEPILOT_READ_LOGS`), sanitized, failing containers only.
+- New fixes: `add-pdb`, `make-service-internal`, `set-kafka-config`, scoped `restrict-ingress`; edits to operator CRs and Helm values (Argo CD, Flux, values files).
+- New tools: `list_components`, `diagnose_component`, `verify_fix`, `plan_revert`. `cluster_health` lists components and likely root causes.
+- Security triage: +15 for workloads exposed via LoadBalancer/NodePort.
+- Demo cluster gains a `data` namespace and an `orders` app; optional `make lab-data` for real clusters.
+
+## 0.1.0
 First public alpha.
 - Diagnosis engine: OOM (rollout-correlated), crash loops, image pull, missing Secret/ConfigMap, unschedulable, probes, nodes.
 - Security triage: Falco + Trivy + RBAC + NetworkPolicy correlation with explained scoring; allowlist; platform namespaces hidden by default.

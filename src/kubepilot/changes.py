@@ -61,6 +61,7 @@ class PlannedFile(BaseModel):
     after: str
     diff: str
     policy: list[PolicyResult] = Field(default_factory=list)
+    deleted: bool = False
 
 
 class ChangePlan(BaseModel):
@@ -79,6 +80,8 @@ class ChangePlan(BaseModel):
     risk: Literal["low", "medium", "high"]
     evidence_summary: str
     token_sha: str
+    addresses: list[dict[str, str]] = Field(default_factory=list)  # findings this plan is meant to fix
+    reverts: str | None = None  # plan id this plan undoes
     status: Literal["pending", "committed", "rejected", "expired"] = "pending"
     branch: str | None = None
     commit: str | None = None
@@ -151,6 +154,8 @@ class PlanStore:
         result: RemediationResult,
         evidence_summary: str,
         now: datetime | None = None,
+        addresses: list[dict[str, str]] | None = None,
+        reverts: str | None = None,
     ) -> tuple[ChangePlan, str]:
         now = now or datetime.now(UTC)
         head = git(self.repo, "rev-parse", "HEAD")
@@ -174,6 +179,8 @@ class PlanStore:
             risk=self._risk(result),
             evidence_summary=evidence_summary,
             token_sha=_sha(token),
+            addresses=addresses or [],
+            reverts=reverts,
         )
         self.save(plan)
         self.audit(
@@ -193,12 +200,13 @@ class PlanStore:
             after=c.after,
             diff=c.diff(),
             policy=c.policy,
+            deleted=c.deleted,
         )
 
     @staticmethod
     def _risk(result: RemediationResult) -> Literal["low", "medium", "high"]:
         text = " ".join(result.applied).lower()
-        if "isolate" in text:
+        if "isolate" in text or "revert" in text:
             return "high"
         if any(k in text for k in ("image", "networkpolicy", "runasnonroot")):
             return "medium"
@@ -258,6 +266,9 @@ class PlanStore:
                 target = (wt / f.path).resolve()
                 if wt.resolve() not in target.parents:
                     raise PermissionError(f"refusing to write outside the repo: {f.path}")
+                if f.deleted:
+                    git(wt, "rm", "-q", "--", f.path)
+                    continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(f.after)
                 git(wt, "add", "--", f.path)
@@ -291,7 +302,8 @@ class PlanStore:
 
     @staticmethod
     def _message(plan: ChangePlan) -> str:
-        title = f"kubepilot: fix {plan.workload.kind.lower()} {plan.workload.namespace}/{plan.workload.name}"
+        verb = f"revert plan {plan.reverts} on" if plan.reverts else "fix"
+        title = f"kubepilot: {verb} {plan.workload.kind.lower()} {plan.workload.namespace}/{plan.workload.name}"
         body = ["", "Why:", plan.evidence_summary, "", "Changes:"] + [f"- {a}" for a in plan.applied]
         if plan.notes:
             body += ["", "Reviewer notes:"] + [f"- {n}" for n in plan.notes]
@@ -327,3 +339,85 @@ class PlanStore:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return None
         return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else None
+
+
+# ---------------------------------------------------------------- after the commit: merged? revert
+
+
+def _ref_exists(repo: Path, ref: str) -> bool:
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        return True
+    except GitError:
+        return False
+
+
+def _show(repo: Path, ref: str, path: str) -> str | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo), "show", f"{ref}:{path}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT,
+        ).stdout
+    except subprocess.CalledProcessError:
+        return None
+
+
+def merge_state(repo: Path, plan: ChangePlan) -> dict[str, str]:
+    """Is the plan's commit in the base branch? Uses local refs only (run `git fetch` to refresh)."""
+    if plan.status != "committed" or not plan.commit:
+        return {"state": "not-committed", "detail": f"plan status is {plan.status}"}
+    for ref in (plan.base_branch, f"origin/{plan.base_branch}"):
+        if not _ref_exists(repo, ref):
+            continue
+        try:
+            git(repo, "merge-base", "--is-ancestor", plan.commit, ref)
+            return {"state": "merged", "detail": f"commit {plan.commit[:10]} is in {ref}"}
+        except GitError:
+            pass
+        # Squash / rebase merges rewrite the commit: compare file contents instead.
+        same = all(
+            (_show(repo, ref, f.path) is None) if f.deleted else (_show(repo, ref, f.path) == f.after)
+            for f in plan.files
+        )
+        if same and plan.files:
+            return {"state": "merged", "detail": f"{ref} contains the planned file contents (squash/rebase merge)"}
+    return {
+        "state": "not-merged",
+        "detail": f"branch {plan.branch} is not in {plan.base_branch} yet "
+        "(based on local refs; `git fetch` to refresh)",
+    }
+
+
+def revert_changes(repo: Path, plan: ChangePlan) -> list[FileChange]:
+    """File changes that undo a committed plan on top of the current HEAD (computed in a throwaway worktree)."""
+    if not plan.commit:
+        raise ValueError(f"plan {plan.id} has no commit to revert")
+    tmp = Path(tempfile.mkdtemp(prefix="kubepilot-rv-"))
+    wt = tmp / "wt"
+    try:
+        git(repo, "worktree", "add", "--detach", str(wt), "HEAD")
+        try:
+            git(wt, "revert", "--no-commit", plan.commit)
+        except GitError as e:
+            raise ValueError(f"plan {plan.id} cannot be reverted cleanly on HEAD (later edits overlap): {e}") from e
+        out: list[FileChange] = []
+        for f in plan.files:
+            cur_path = repo / f.path
+            before = cur_path.read_text() if cur_path.exists() else None
+            reverted = wt / f.path
+            if reverted.exists():
+                after = reverted.read_text()
+                if after != before:
+                    out.append(FileChange(path=f.path, before=before, after=after))
+            elif before is not None:
+                out.append(FileChange(path=f.path, before=before, after="", deleted=True))
+        return out
+    finally:
+        with contextlib.suppress(GitError):
+            git(repo, "worktree", "remove", "--force", str(wt))
+        shutil.rmtree(tmp, ignore_errors=True)
+        with contextlib.suppress(GitError):
+            git(repo, "worktree", "prune")

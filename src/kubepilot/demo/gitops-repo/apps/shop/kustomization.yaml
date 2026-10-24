@@ -7,3 +7,4 @@ resources:
   - frontend.yaml
   - worker.yaml
   - api.yaml
+  - orders.yaml

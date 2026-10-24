@@ -1,0 +1,460 @@
+# Data tier for the demo: operator-managed and Helm-installed middleware with realistic problems.
+# ================================================================ Kafka (Strimzi): broker 2 can't get a volume
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata: {name: events, namespace: data}
+spec:
+  kafka:
+    version: 3.7.0
+    replicas: 3
+    listeners:
+      - {name: plain, port: 9092, type: internal, tls: false}
+      - {name: external, port: 9094, type: loadbalancer, tls: false}
+    config:
+      default.replication.factor: 3
+      min.insync.replicas: 3
+      offsets.topic.replication.factor: 3
+    storage: {type: persistent-claim, size: 20Gi, class: fast-ssd}
+    resources:
+      requests: {cpu: 500m, memory: 2Gi}
+      limits: {memory: 2Gi}
+    jvmOptions: {-Xms: 1024m, -Xmx: 1024m}
+status:
+  conditions:
+    - type: Ready
+      status: "False"
+      reason: TimeoutException
+      message: Exceeded timeout of 300000ms while waiting for Pods resource events-kafka-2 in namespace data to be ready
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: events-kafka-0
+  namespace: data
+  labels:
+    strimzi.io/cluster: events
+    strimzi.io/kind: Kafka
+    strimzi.io/name: events-kafka
+    strimzi.io/broker-role: "true"
+    strimzi.io/controller-role: "true"
+  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+spec:
+  nodeName: kind-worker
+  containers:
+    - name: kafka
+      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
+      readinessProbe: {httpGet: {path: /v1/ready/, port: 8080}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: kafka, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-22T08:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: events-kafka-1
+  namespace: data
+  labels:
+    strimzi.io/cluster: events
+    strimzi.io/kind: Kafka
+    strimzi.io/name: events-kafka
+    strimzi.io/broker-role: "true"
+    strimzi.io/controller-role: "true"
+  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+spec:
+  nodeName: kind-worker2
+  containers:
+    - name: kafka
+      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
+      readinessProbe: {httpGet: {path: /v1/ready/, port: 8080}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: kafka, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-22T08:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: events-kafka-2
+  namespace: data
+  labels:
+    strimzi.io/cluster: events
+    strimzi.io/kind: Kafka
+    strimzi.io/name: events-kafka
+    strimzi.io/broker-role: "true"
+    strimzi.io/controller-role: "true"
+  ownerReferences: [{apiVersion: core.strimzi.io/v1beta2, kind: StrimziPodSet, name: events-kafka, controller: true}]
+spec:
+  containers:
+    - name: kafka
+      image: quay.io/strimzi/kafka:0.41.0-kafka-3.7.0
+      resources: {requests: {cpu: 500m, memory: 2Gi}, limits: {memory: 2Gi}}
+status:
+  phase: Pending
+  conditions:
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      message: "0/3 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling."
+---
+apiVersion: v1
+kind: List
+items:
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-0, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-1, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Bound, capacity: {storage: 20Gi}}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-events-kafka-2, namespace: data}, spec: {storageClassName: fast-ssd, resources: {requests: {storage: 20Gi}}}, status: {phase: Pending}}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: events-kafka-bootstrap, namespace: data}
+    spec: {type: ClusterIP, selector: {strimzi.io/cluster: events, strimzi.io/kind: Kafka, strimzi.io/name: events-kafka}, ports: [{name: tcp-clients, port: 9092}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: events-kafka-brokers, namespace: data}
+    spec: {clusterIP: None, selector: {strimzi.io/cluster: events, strimzi.io/kind: Kafka, strimzi.io/name: events-kafka}, ports: [{name: tcp-replication, port: 9091}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: events-kafka-external-bootstrap, namespace: data}
+    spec: {type: LoadBalancer, selector: {strimzi.io/cluster: events, strimzi.io/kind: Kafka, strimzi.io/name: events-kafka}, ports: [{name: tcp-external, port: 9094}]}
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata: {name: events-kafka, namespace: data}
+    spec: {maxUnavailable: 1, selector: {matchLabels: {strimzi.io/cluster: events, strimzi.io/name: events-kafka}}}
+    status: {disruptionsAllowed: 0}
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata: {name: events-network-policy-kafka, namespace: data}
+    spec:
+      podSelector: {matchLabels: {strimzi.io/cluster: events, strimzi.io/name: events-kafka}}
+      policyTypes: [Ingress]
+      ingress: [{ports: [{port: 9092}, {port: 9094}]}]
+---
+# ================================================================ OpenSearch: heap = limit, security off, public LB
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: search
+  namespace: data
+  labels: {app: search}
+spec:
+  replicas: 1
+  serviceName: search-headless
+  selector: {matchLabels: {app: search}}
+  template:
+    metadata: {labels: {app: search}}
+    spec:
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.13.0
+          ports: [{containerPort: 9200}, {containerPort: 9300}]
+          env:
+            - {name: discovery.type, value: single-node}
+            - {name: OPENSEARCH_JAVA_OPTS, value: "-Xms1g -Xmx1g"}
+            - {name: DISABLE_SECURITY_PLUGIN, value: "true"}
+          resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 1Gi}}
+          readinessProbe: {tcpSocket: {port: 9200}}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+status: {replicas: 1, readyReplicas: 0}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: search-0
+  namespace: data
+  labels: {app: search, statefulset.kubernetes.io/pod-name: search-0}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: search, controller: true}]
+spec:
+  nodeName: kind-worker2
+  containers:
+    - name: opensearch
+      image: opensearchproject/opensearch:2.13.0
+      env:
+        - {name: discovery.type, value: single-node}
+        - {name: OPENSEARCH_JAVA_OPTS, value: "-Xms1g -Xmx1g"}
+        - {name: DISABLE_SECURITY_PLUGIN, value: "true"}
+      resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  phase: Running
+  containerStatuses:
+    - name: opensearch
+      ready: false
+      restartCount: 6
+      state: {waiting: {reason: CrashLoopBackOff}}
+      lastState: {terminated: {reason: OOMKilled, exitCode: 137, startedAt: "2026-10-23T09:50:00Z", finishedAt: "2026-10-23T09:53:00Z"}}
+---
+apiVersion: v1
+kind: List
+items:
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: data-search-0, namespace: data}, spec: {resources: {requests: {storage: 10Gi}}}, status: {phase: Bound, capacity: {storage: 10Gi}}}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: search, namespace: data}
+    spec: {type: LoadBalancer, selector: {app: search}, ports: [{name: http, port: 9200}]}
+---
+# ================================================================ RabbitMQ (operator): 2 replicas, same node, mgmt NodePort
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata: {name: queue, namespace: data}
+spec:
+  replicas: 2
+  image: rabbitmq:3.13-management
+  resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  conditions:
+    - {type: AllReplicasReady, status: "True"}
+    - {type: ClusterAvailable, status: "True"}
+    - {type: ReconcileSuccess, status: "True"}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: queue-server
+  namespace: data
+  labels: {app.kubernetes.io/name: queue, app.kubernetes.io/part-of: rabbitmq}
+  ownerReferences: [{apiVersion: rabbitmq.com/v1beta1, kind: RabbitmqCluster, name: queue, controller: true}]
+spec:
+  replicas: 2
+  serviceName: queue-nodes
+  selector: {matchLabels: {app.kubernetes.io/name: queue}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: queue, app.kubernetes.io/component: rabbitmq, app.kubernetes.io/part-of: rabbitmq}}
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-management
+          ports: [{containerPort: 5672}, {containerPort: 15672}]
+          resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+          readinessProbe: {tcpSocket: {port: 5672}}
+  volumeClaimTemplates:
+    - metadata: {name: persistence}
+      spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 10Gi}}}
+status: {replicas: 2, readyReplicas: 2}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: queue-server-0
+  namespace: data
+  labels: {app.kubernetes.io/name: queue, app.kubernetes.io/component: rabbitmq, app.kubernetes.io/part-of: rabbitmq, statefulset.kubernetes.io/pod-name: queue-server-0}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: queue-server, controller: true}]
+spec:
+  nodeName: kind-worker
+  containers:
+    - name: rabbitmq
+      image: rabbitmq:3.13-management
+      resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: rabbitmq, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-20T10:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: queue-server-1
+  namespace: data
+  labels: {app.kubernetes.io/name: queue, app.kubernetes.io/component: rabbitmq, app.kubernetes.io/part-of: rabbitmq, statefulset.kubernetes.io/pod-name: queue-server-1}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: queue-server, controller: true}]
+spec:
+  nodeName: kind-worker
+  containers:
+    - name: rabbitmq
+      image: rabbitmq:3.13-management
+      resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: rabbitmq, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-20T10:00:00Z"}}}
+---
+apiVersion: v1
+kind: List
+items:
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: persistence-queue-server-0, namespace: data}, spec: {resources: {requests: {storage: 10Gi}}}, status: {phase: Bound}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: persistence-queue-server-1, namespace: data}, spec: {resources: {requests: {storage: 10Gi}}}, status: {phase: Bound}}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: queue, namespace: data}
+    spec: {type: ClusterIP, selector: {app.kubernetes.io/name: queue}, ports: [{name: amqp, port: 5672}, {name: management, port: 15672}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: queue-mgmt, namespace: data}
+    spec: {type: NodePort, selector: {app.kubernetes.io/name: queue}, ports: [{name: management, port: 15672, nodePort: 31672}]}
+---
+# ================================================================ Redis (Bitnami Helm chart): no password, no persistence
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cache-redis-master
+  namespace: data
+  labels: {app.kubernetes.io/name: redis, app.kubernetes.io/instance: cache, app.kubernetes.io/component: master, app.kubernetes.io/managed-by: Helm, helm.sh/chart: redis-19.6.0}
+spec:
+  replicas: 1
+  serviceName: cache-redis-headless
+  selector: {matchLabels: {app.kubernetes.io/name: redis, app.kubernetes.io/instance: cache, app.kubernetes.io/component: master}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: redis, app.kubernetes.io/instance: cache, app.kubernetes.io/component: master}}
+    spec:
+      containers:
+        - name: redis
+          image: docker.io/bitnami/redis:7.2.5
+          ports: [{containerPort: 6379}]
+          env:
+            - {name: ALLOW_EMPTY_PASSWORD, value: "yes"}
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 512Mi}}
+          readinessProbe: {exec: {command: [redis-cli, ping]}}
+      volumes:
+        - {name: redis-data, emptyDir: {}}
+status: {replicas: 1, readyReplicas: 1}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-redis-master-0
+  namespace: data
+  labels: {app.kubernetes.io/name: redis, app.kubernetes.io/instance: cache, app.kubernetes.io/component: master, statefulset.kubernetes.io/pod-name: cache-redis-master-0}
+  ownerReferences: [{apiVersion: apps/v1, kind: StatefulSet, name: cache-redis-master, controller: true}]
+spec:
+  nodeName: kind-worker2
+  containers:
+    - name: redis
+      image: docker.io/bitnami/redis:7.2.5
+      env:
+        - {name: ALLOW_EMPTY_PASSWORD, value: "yes"}
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 512Mi}}
+  volumes:
+    - {name: redis-data, emptyDir: {}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: redis, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-19T10:00:00Z"}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: cache-redis-master, namespace: data}
+spec: {type: ClusterIP, selector: {app.kubernetes.io/name: redis, app.kubernetes.io/instance: cache, app.kubernetes.io/component: master}, ports: [{name: tcp-redis, port: 6379}]}
+---
+# ================================================================ PostgreSQL (CloudNativePG): healthy, for contrast
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: pg, namespace: data}
+spec:
+  instances: 2
+  storage: {size: 20Gi}
+status:
+  phase: Cluster in healthy state
+  conditions:
+    - {type: Ready, status: "True", reason: ClusterIsReady}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-1
+  namespace: data
+  labels: {cnpg.io/cluster: pg, cnpg.io/instanceName: pg-1, role: primary}
+  ownerReferences: [{apiVersion: postgresql.cnpg.io/v1, kind: Cluster, name: pg, controller: true}]
+spec:
+  nodeName: kind-worker
+  containers:
+    - name: postgres
+      image: ghcr.io/cloudnative-pg/postgresql:16.3
+      resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: postgres, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-15T10:00:00Z"}}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-2
+  namespace: data
+  labels: {cnpg.io/cluster: pg, cnpg.io/instanceName: pg-2, role: replica}
+  ownerReferences: [{apiVersion: postgresql.cnpg.io/v1, kind: Cluster, name: pg, controller: true}]
+spec:
+  nodeName: kind-worker2
+  containers:
+    - name: postgres
+      image: ghcr.io/cloudnative-pg/postgresql:16.3
+      resources: {requests: {cpu: 250m, memory: 1Gi}, limits: {memory: 1Gi}}
+status:
+  phase: Running
+  containerStatuses:
+    - {name: postgres, ready: true, restartCount: 0, state: {running: {startedAt: "2026-10-15T10:00:00Z"}}}
+---
+apiVersion: v1
+kind: List
+items:
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: pg-1, namespace: data}, spec: {resources: {requests: {storage: 20Gi}}}, status: {phase: Bound}}
+  - {apiVersion: v1, kind: PersistentVolumeClaim, metadata: {name: pg-2, namespace: data}, spec: {resources: {requests: {storage: 20Gi}}}, status: {phase: Bound}}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: pg-rw, namespace: data}
+    spec: {type: ClusterIP, selector: {cnpg.io/cluster: pg, role: primary}, ports: [{name: postgres, port: 5432}]}
+  - apiVersion: v1
+    kind: Service
+    metadata: {name: pg-ro, namespace: data}
+    spec: {type: ClusterIP, selector: {cnpg.io/cluster: pg, role: replica}, ports: [{name: postgres, port: 5432}]}
+  - apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata: {name: pg, namespace: data}
+    spec: {minAvailable: 1, selector: {matchLabels: {cnpg.io/cluster: pg}}}
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata: {name: pg-clients, namespace: data}
+    spec:
+      podSelector: {matchLabels: {cnpg.io/cluster: pg}}
+      policyTypes: [Ingress]
+      ingress: [{from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: shop}}}], ports: [{port: 5432}]}]
+---
+# ================================================================ shop/orders: crashes because Kafka rejects writes
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: orders-5c7d9f8b4
+  namespace: shop
+  creationTimestamp: "2026-10-20T09:00:00Z"
+  annotations: {deployment.kubernetes.io/revision: "3"}
+  ownerReferences: [{apiVersion: apps/v1, kind: Deployment, name: orders, controller: true}]
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: orders
+          image: registry.example.com/shop/orders:1.4.2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: orders-5c7d9f8b4-k2p4x
+  namespace: shop
+  labels: {app: orders, pod-template-hash: 5c7d9f8b4}
+  ownerReferences: [{apiVersion: apps/v1, kind: ReplicaSet, name: orders-5c7d9f8b4, controller: true}]
+spec:
+  nodeName: kind-worker
+  securityContext: {runAsNonRoot: true, runAsUser: 10001}
+  containers:
+    - name: orders
+      image: registry.example.com/shop/orders:1.4.2
+      env:
+        - {name: KAFKA_BOOTSTRAP_SERVERS, value: "events-kafka-bootstrap.data.svc.cluster.local:9092"}
+        - {name: SEARCH_URL, value: "http://search.data:9200"}
+        - {name: PG_HOST, value: "pg-rw.data.svc"}
+        - {name: PAYMENT_API_KEY, value: "sk_live_DEMO_must_never_be_shown_4242"}
+        - name: PG_PASSWORD
+          valueFrom: {secretKeyRef: {name: orders-db, key: password}}
+      resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {memory: 512Mi}}
+      readinessProbe: {httpGet: {path: /ready, port: 8080}}
+status:
+  phase: Running
+  conditions:
+    - {type: Ready, status: "False"}
+  containerStatuses:
+    - name: orders
+      ready: false
+      restartCount: 9
+      state: {waiting: {reason: CrashLoopBackOff}}
+      lastState: {terminated: {reason: Error, exitCode: 1, startedAt: "2026-10-23T09:57:00Z", finishedAt: "2026-10-23T09:57:20Z"}}
