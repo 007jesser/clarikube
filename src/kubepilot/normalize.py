@@ -15,18 +15,23 @@ from kubepilot.models import (
     ConfigMapInfo,
     Container,
     ContainerState,
+    ContainerUsage,
     CustomResource,
     EnvVar,
     Event,
     FalcoAlert,
+    FiringAlert,
+    HPAInfo,
     IngressClassInfo,
     IngressInfo,
     IngressPath,
     LabelSelector,
+    NamespaceInfo,
     NetworkPolicyInfo,
     Node,
     PDBInfo,
     Pod,
+    PodMetricsInfo,
     PolicyRule,
     PVCInfo,
     ReplicaSetInfo,
@@ -36,6 +41,7 @@ from kubepilot.models import (
     ServiceInfo,
     ServicePort,
     Severity,
+    StorageClassInfo,
     Subject,
     Volume,
     Vulnerability,
@@ -337,6 +343,7 @@ def node(raw: Raw) -> Node:
         allocatable_cpu=_s(alloc.get("cpu")),
         allocatable_memory=_s(alloc.get("memory")),
         taints=taints,
+        kubelet_version=(status.get("nodeInfo") or {}).get("kubeletVersion"),
     )
 
 
@@ -538,6 +545,9 @@ def service(raw: Raw) -> ServiceInfo:
         ],
         headless=spec.get("clusterIP") == "None",
         external=stype in ("LoadBalancer", "NodePort") or bool(spec.get("externalIPs")),
+        lb_assigned=bool(((raw.get("status") or {}).get("loadBalancer") or {}).get("ingress"))
+        if stype == "LoadBalancer" and "status" in raw
+        else None,
     )
 
 
@@ -597,6 +607,93 @@ def ingress_class(raw: Raw) -> IngressClassInfo:
     )
 
 
+def storage_class(raw: Raw) -> StorageClassInfo:
+    m = _meta(raw)
+    ann = m.get("annotations") or {}
+    return StorageClassInfo(
+        name=m.get("name", ""),
+        provisioner=str(raw.get("provisioner") or ""),
+        default=str(ann.get("storageclass.kubernetes.io/is-default-class", "")).lower() == "true",
+        binding_mode=str(raw.get("volumeBindingMode") or "Immediate"),
+    )
+
+
+def namespace(raw: Raw) -> NamespaceInfo:
+    m = _meta(raw)
+    return NamespaceInfo(name=m.get("name", ""), labels=dict(m.get("labels") or {}))
+
+
+def hpa(raw: Raw) -> HPAInfo:
+    m = _meta(raw)
+    spec = raw.get("spec") or {}
+    status = raw.get("status") or {}
+    ref = spec.get("scaleTargetRef") or {}
+    return HPAInfo(
+        namespace=m.get("namespace", "default"),
+        name=m.get("name", ""),
+        target_kind=str(ref.get("kind") or ""),
+        target_name=str(ref.get("name") or ""),
+        min_replicas=int(spec.get("minReplicas") or 1),
+        max_replicas=int(spec.get("maxReplicas") or 1),
+        current_replicas=int(status.get("currentReplicas") or 0),
+        desired_replicas=int(status.get("desiredReplicas") or 0),
+        conditions=[
+            Condition(
+                type=str(c.get("type", "")),
+                status=str(c.get("status", "")),
+                reason=c.get("reason"),
+                message=c.get("message"),
+            )
+            for c in status.get("conditions") or []
+            if isinstance(c, dict)
+        ],
+    )
+
+
+def _cpu_millis(v: Any) -> int:
+    s = str(v or "0")
+    try:
+        if s.endswith("n"):
+            return int(int(s[:-1]) / 1_000_000)
+        if s.endswith("u"):
+            return int(int(s[:-1]) / 1000)
+        if s.endswith("m"):
+            return int(s[:-1])
+        return int(float(s) * 1000)
+    except ValueError:
+        return 0
+
+
+def pod_metrics(raw: Raw) -> PodMetricsInfo:
+    from kubepilot import quantity
+
+    m = _meta(raw)
+    out: dict[str, ContainerUsage] = {}
+    for c in raw.get("containers") or []:
+        usage = c.get("usage") or {}
+        try:
+            mem = int(quantity.parse(str(usage.get("memory") or "0")))
+        except (ValueError, ArithmeticError):
+            mem = 0
+        out[str(c.get("name", ""))] = ContainerUsage(cpu_millis=_cpu_millis(usage.get("cpu")), memory_bytes=mem)
+    return PodMetricsInfo(namespace=m.get("namespace", "default"), pod=m.get("name", ""), containers=out)
+
+
+def firing_alert(raw: Raw) -> FiringAlert:
+    labels = {str(k): str(v) for k, v in (raw.get("labels") or {}).items()}
+    ann = raw.get("annotations") or {}
+    return FiringAlert(
+        name=labels.get("alertname", "unknown"),
+        status=str(raw.get("status") or "firing"),
+        severity=labels.get("severity", "warning"),
+        namespace=labels.get("namespace"),
+        labels=labels,
+        summary=str(ann.get("summary") or ann.get("description") or ann.get("message") or "")[:500],
+        starts_at=ts(raw.get("startsAt")),
+        fingerprint=str(raw.get("fingerprint") or ""),
+    )
+
+
 def config_map(raw: Raw) -> ConfigMapInfo:
     m = _meta(raw)
     return ConfigMapInfo(
@@ -608,17 +705,18 @@ def config_map(raw: Raw) -> ConfigMapInfo:
 
 def custom_resource(raw: Raw) -> CustomResource:
     m = _meta(raw)
+    cluster_scoped = "namespace" not in m
     status = raw.get("status") or {}
     api = str(raw.get("apiVersion", ""))
     return CustomResource(
         group=api.split("/")[0] if "/" in api else "",
         kind=str(raw.get("kind", "")),
-        namespace=m.get("namespace", "default"),
+        namespace="" if cluster_scoped else m.get("namespace", "default"),
         name=m.get("name", ""),
         labels=dict(m.get("labels") or {}),
-        # Kong plugins keep plugin/config at the top level instead of under spec
+        # Some kinds keep their content at the top level instead of under spec (KongPlugin, PolicyReport)
         spec=dict(raw.get("spec") or {})
-        or ({k: raw[k] for k in ("plugin", "config", "configFrom") if k in raw} if "plugin" in raw else {}),
+        or {k: v for k, v in raw.items() if k not in ("apiVersion", "kind", "metadata", "status", "spec")},
         status=dict(status) if isinstance(status, dict) else {},
         conditions=[
             Condition(

@@ -1,4 +1,5 @@
 # Synthetic demo cluster. Engines evaluate "recent" relative to this timestamp.
 now: "2026-10-23T10:00:00Z"
+server_version: "v1.33.4"
 description: >
   shop namespace with five broken/risky workloads plus a noisy backup CronJob in batch.

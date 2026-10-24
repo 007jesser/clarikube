@@ -348,9 +348,12 @@ def detect(snap: Snapshot) -> list[Component]:
         if s.ref.key in claimed_specs:
             continue
         skind = next((k for c in s.containers if not c.init and (k := classify_image(c.image))), None)
-        if skind is None or (s.kind == "DaemonSet" and skind not in layers.LOGGING_KINDS):
+        if skind is None or (s.kind == "DaemonSet" and skind not in layers.DAEMON_KINDS):
             continue
         instance = s.labels.get("app.kubernetes.io/instance") or s.labels.get("release") or s.name
+        if skind in layers.CATALOG and skind not in layers.EDGE_KINDS | layers.LOGGING_KINDS:
+            # multi-deployment tools (argocd-server, argocd-repo-server, ...) are one component per namespace
+            instance = s.labels.get("app.kubernetes.io/part-of") or layers.PLATFORM_DISPLAY[skind].split()[0].lower()
         gkey = (skind, s.namespace, instance)
         if gkey not in groups:
             chart = s.labels.get("helm.sh/chart")
@@ -678,8 +681,15 @@ def _check_storage(snap: Snapshot, comp: Component) -> list[Finding]:
                     f"{comp.label}: volume {c.name} is not provisioned",
                     Severity.HIGH,
                     f"PersistentVolumeClaim {c.name} is Pending (storage class "
-                    f"{c.storage_class or 'default'}): the member using it cannot start. Check that the "
-                    "storage class exists and has capacity.",
+                    f"{c.storage_class or 'default'}): the member using it cannot start. "
+                    + (
+                        f"StorageClass {c.storage_class} does not exist in the cluster, so no volume will ever be "
+                        "provisioned."
+                        if snap.storage_classes
+                        and c.storage_class
+                        and c.storage_class not in {s.name for s in snap.storage_classes}
+                        else "Check that the storage class exists and has capacity."
+                    ),
                     evidence=[
                         Evidence(
                             source="pvc",
@@ -1352,9 +1362,25 @@ def _diagnose_platform(snap: Snapshot, comp: Component, comps: list[Component]) 
             findings += _check_single(comp)
             findings += _check_pdb(snap, comp)
             findings += _check_spread(snap, comp)
-    else:
+    elif comp.layer == "logging":
         findings += layers.check_logging(snap, comp)
-    findings += _check_resources(comp)
+    findings += layers.check_service_component(snap, comp)
+    impact = layers.IMPACT.get(comp.kind)
+    if impact is not None:
+        sev, text = impact
+        findings = [
+            f.model_copy(
+                update={
+                    "severity": max(f.severity, sev) if " is down (0/" in f.title else f.severity,
+                    "explanation": f"{f.explanation} {text}",
+                }
+            )
+            if (" is down (0/" in f.title or " is degraded (" in f.title)
+            else f
+            for f in findings
+        ]
+    if comp.layer in ("edge", "logging"):
+        findings += _check_resources(comp)
     # an "edge-down" finding already says it all: drop the generic "down" duplicate
     if any(f.title.endswith("unreachable from outside") for f in findings):
         findings = [f for f in findings if " is down (0/" not in f.title]

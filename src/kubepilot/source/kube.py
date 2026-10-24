@@ -47,6 +47,9 @@ class KubeSource:
         self._rbac = client.RbacAuthorizationV1Api(self._api)
         self._custom = client.CustomObjectsApi(self._api)
         self._policy = client.PolicyV1Api(self._api)
+        self._storage = client.StorageV1Api(self._api)
+        self._autoscaling = client.AutoscalingV2Api(self._api)
+        self._discovery: tuple[float, dict[str, set[str]]] | None = None
         self._alerts = alerts
         self._falco_window = falco_window
         self._cache_ttl = cache_ttl
@@ -153,7 +156,11 @@ class KubeSource:
         from kubernetes.client.exceptions import ApiException
 
         out: list[dict[str, Any]] = []
-        for group, versions, plural, kind in OPERATOR_CRDS:
+        served = self._served_groups()
+        for group, all_versions, plural, kind in OPERATOR_CRDS:
+            versions = all_versions
+            if served is not None:
+                versions = tuple(v for v in all_versions if v in served.get(group, set()))
             for version in versions:
                 try:
                     if ns:
@@ -222,7 +229,61 @@ class KubeSource:
             custom_resources=self._operator_crs(ns),
             ingresses=self._scoped(ns, net.list_ingress_for_all_namespaces, net.list_namespaced_ingress, "Ingress"),
             ingress_classes=self._optional(lambda: self._list(net.list_ingress_class, "IngressClass")),
+            storage_classes=self._optional(lambda: self._list(self._storage.list_storage_class, "StorageClass")),
+            namespaces=self._optional(lambda: self._list(core.list_namespace, "Namespace")),
+            hpas=self._optional(
+                lambda: self._scoped(
+                    ns,
+                    self._autoscaling.list_horizontal_pod_autoscaler_for_all_namespaces,
+                    self._autoscaling.list_namespaced_horizontal_pod_autoscaler,
+                    "HorizontalPodAutoscaler",
+                )
+            ),
+            pod_metrics=self._pod_metrics(ns, warnings),
+            server_version=self._server_version(),
         )
+
+    def _served_groups(self) -> dict[str, set[str]] | None:
+        """API group -> served versions (API discovery, cached 5 min), so absent operators cost no requests."""
+        now = time.monotonic()
+        if self._discovery is not None and now - self._discovery[0] < 300:
+            return self._discovery[1]
+        from kubernetes import client
+
+        try:
+            groups = client.ApisApi(self._api).get_api_versions()
+        except Exception:
+            return None
+        out = {g.name: {v.version for v in g.versions or []} for g in groups.groups or []}
+        self._discovery = (now, out)
+        return out
+
+    def _pod_metrics(self, ns: str | None, warnings: list[str]) -> list[dict[str, Any]]:
+        from kubernetes.client.exceptions import ApiException
+
+        try:
+            if ns:
+                resp = self._custom.list_namespaced_custom_object("metrics.k8s.io", "v1beta1", ns, "pods")
+            else:
+                resp = self._custom.list_cluster_custom_object("metrics.k8s.io", "v1beta1", "pods")
+        except ApiException as e:
+            if e.status in (403, 404, 503):
+                warnings.append("metrics-server not available: usage-based checks (OOM risk, rightsizing) skipped")
+                return []
+            raise
+        items = list(cast(dict[str, Any], resp).get("items", []))
+        for i in items:
+            i["kind"] = "PodMetrics"
+        return items
+
+    def _server_version(self) -> str | None:
+        from kubernetes import client
+
+        try:
+            v = client.VersionApi(self._api).get_code()
+        except Exception:
+            return None
+        return str(v.git_version)
 
     def _optional(self, fn: Callable[[], list[dict[str, Any]]]) -> list[dict[str, Any]]:
         from kubernetes.client.exceptions import ApiException
@@ -288,7 +349,9 @@ class KubeSource:
             falco = self._alerts.since(now - self._falco_window, namespace=namespace)
         else:
             warnings.append("No Falco alert store configured; runtime signals skipped")
-        snap = Snapshot.build(raw, now=now, falco=falco, warnings=warnings)
+        # Alertmanager re-sends firing alerts every repeat_interval (default 4h): keep a matching window.
+        prom = self._alerts.firing(now - timedelta(hours=6), namespace=namespace) if self._alerts else []
+        snap = Snapshot.build(raw, now=now, falco=falco, warnings=warnings, alerts=prom)
         self._cache[namespace] = (time.monotonic(), snap)
         return snap
 

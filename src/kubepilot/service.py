@@ -12,7 +12,7 @@ from typing import Any
 from kubepilot import remediation
 from kubepilot.changes import ChangePlan, PlanStore, merge_state, revert_changes
 from kubepilot.config import Settings
-from kubepilot.engine import components, dependencies, diagnose, layers, logsig, rbac, security, selectors
+from kubepilot.engine import components, dependencies, diagnose, layers, logsig, ops, rbac, security, selectors, usage
 from kubepilot.engine.allowlist import Allowlist
 from kubepilot.engine.components import Component
 from kubepilot.engine.dependencies import Edge
@@ -71,6 +71,58 @@ def incident_dict(i: SecurityIncident) -> dict[str, Any]:
     }
 
 
+_AREAS = {
+    "Ingress": "routing",
+    "HTTPRoute": "routing",
+    "Gateway": "routing",
+    "IngressRoute": "routing",
+    "Service": "routing",
+    "Certificate": "tls",
+    "Application": "gitops",
+    "Kustomization": "gitops",
+    "HelmRelease": "gitops",
+    "GitRepository": "gitops",
+    "HelmRepository": "gitops",
+    "OCIRepository": "gitops",
+    "ExternalSecret": "secrets",
+    "SecretStore": "secrets",
+    "ClusterSecretStore": "secrets",
+    "SealedSecret": "secrets",
+    "ScaledObject": "autoscaling",
+    "ScaledJob": "autoscaling",
+    "NodePool": "autoscaling",
+    "NodeClaim": "autoscaling",
+    "PersistentVolumeClaim": "storage",
+    "StorageClass": "storage",
+    "Volume": "storage",
+    "CephCluster": "storage",
+    "ClusterPolicy": "policy",
+    "Policy": "policy",
+    "Backup": "backup",
+    "Schedule": "backup",
+    "BackupStorageLocation": "backup",
+    "Velero": "backup",
+    "Prometheus": "monitoring",
+    "Alertmanager": "monitoring",
+    "Node": "nodes",
+}
+
+
+def _area(f: Finding) -> str:
+    t = f.title
+    if t.startswith("Alert firing"):
+        return "alerts"
+    if t.startswith(("HPA ", "Cluster Autoscaler")):
+        return "autoscaling"
+    if "policy" in t:
+        return "policy"
+    if "sidecar" in t:
+        return "mesh"
+    if "memory limit (OOM risk)" in t or "CPU limit" in t or " requests " in t:
+        return "capacity"
+    return _AREAS.get(f.workload.kind, "workloads")
+
+
 _MULTI_KINDS = {"set-fluentbit-option"}  # several independent edits of the same kind can apply at once
 
 
@@ -96,9 +148,14 @@ class Analysis:
         for c in self.components:  # cross-layer: log pipelines feeding an unhealthy store
             if c.layer == "logging":
                 self.findings[c.key] += dependencies.pipeline_findings(c, self.edges, self.findings)
-        # Not tied to one component: routes to broken backends, certificates
-        self.platform: list[Finding] = layers.ingress_findings(snap, self.components) + layers.certificate_findings(
-            snap
+        # Not tied to one component: routing, TLS, GitOps, secrets, autoscaling, storage, policy, backups,
+        # monitoring/alerts, nodes, load balancers, mesh, and usage (metrics-server)
+        self.secret_findings = ops.secret_findings(snap)
+        self.platform: list[Finding] = (
+            layers.ingress_findings(snap, self.components)
+            + layers.certificate_findings(snap)
+            + ops.all_findings(snap)
+            + usage.usage_findings(snap)
         )
 
     def component(self, key: str) -> Component | None:
@@ -185,15 +242,22 @@ class KubePilot:
         deps = dependencies.dependencies_of(analysis.edges, wl)
         upstream = dependencies.upstream_findings(wl, snap.pods_of(wl), own, analysis.edges, analysis.findings, signals)
         routing = [f for f in analysis.platform if any(h.params.get("workload") == wl.key for h in f.remediations)]
-        own = own + [
-            f.model_copy(
-                update={
-                    "title": f"Users affected: {f.title}",
-                    "remediations": [],
-                }
-            )
-            for f in routing
-        ]
+        seen = {f.id for f in own}
+        about_wl = [f for f in analysis.platform if f.workload == wl and f.id not in seen]  # HPA, alerts, policy, usage
+        upstream = ops.secret_root_causes(analysis.snap, wl, own, analysis.secret_findings) + upstream
+        own = (
+            own
+            + about_wl
+            + [
+                f.model_copy(
+                    update={
+                        "title": f"Users affected: {f.title}",
+                        "remediations": [],
+                    }
+                )
+                for f in routing
+            ]
+        )
         ordered = sorted(upstream, key=lambda f: -f.severity) + sorted(own, key=lambda f: -f.severity)
         return ordered, signals, deps
 
@@ -278,11 +342,17 @@ class KubePilot:
                 for i in incidents[:MAX_ITEMS]
             ],
             "components": comp_rows[:MAX_ITEMS],
-            "routing_and_certificates": [
-                {"object": f.workload.key, "severity": f.severity.label, "title": clean(f.title, 160)}
+            "platform_issues": [
+                {
+                    "area": _area(f),
+                    "object": f.workload.key,
+                    "severity": f.severity.label,
+                    "title": clean(f.title, 160),
+                }
                 for f in sorted(analysis.platform, key=lambda f: -f.severity)
-                if not namespace or f.workload.namespace == k8s_name(namespace)
-            ][:MAX_ITEMS],
+                if (not namespace or f.workload.namespace == k8s_name(namespace)) and f.severity >= Severity.MEDIUM
+            ][: MAX_ITEMS * 2],
+            **({"capacity": cap} if (cap := usage.capacity_summary(analysis.snap)) else {}),
             "platform_incidents_hidden": hidden,
             "next_steps": "Use diagnose_workload, diagnose_component or investigate_security for details on any item."
             + (" Pass include_system=true to also see platform namespaces." if hidden else ""),

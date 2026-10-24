@@ -22,35 +22,109 @@ from kubepilot.source.base import Snapshot
 if TYPE_CHECKING:
     from kubepilot.engine.components import Component
 
-EDGE_KINDS = {"ingress-nginx", "kong"}
-LOGGING_KINDS = {"fluent-bit", "fluentd", "vector"}
-PLATFORM_DISPLAY = {
-    "ingress-nginx": "ingress-nginx",
-    "kong": "Kong",
-    "fluent-bit": "Fluent Bit",
-    "fluentd": "Fluentd",
-    "vector": "Vector",
+# kind -> (layer, display name). Detected from container images (see classify_platform_image).
+CATALOG: dict[str, tuple[str, str]] = {
+    # edge / gateways
+    "ingress-nginx": ("edge", "ingress-nginx"),
+    "kong": ("edge", "Kong"),
+    "traefik": ("edge", "Traefik"),
+    "envoy-gateway": ("edge", "Envoy Gateway"),
+    # log & telemetry pipeline
+    "fluent-bit": ("logging", "Fluent Bit"),
+    "fluentd": ("logging", "Fluentd"),
+    "vector": ("logging", "Vector"),
+    "promtail": ("logging", "Promtail"),
+    "alloy": ("logging", "Grafana Alloy"),
+    "otel-collector": ("logging", "OpenTelemetry Collector"),
+    "loki": ("logging", "Loki"),
+    # monitoring
+    "prometheus": ("monitoring", "Prometheus"),
+    "alertmanager": ("monitoring", "Alertmanager"),
+    "metrics-server": ("monitoring", "metrics-server"),
+    # cluster services
+    "coredns": ("network", "CoreDNS"),
+    "cilium": ("network", "Cilium"),
+    "calico": ("network", "Calico"),
+    "istio": ("mesh", "Istio (istiod)"),
+    "linkerd": ("mesh", "Linkerd"),
+    "argocd": ("gitops", "Argo CD"),
+    "flux": ("gitops", "Flux"),
+    "external-secrets": ("secrets", "External Secrets Operator"),
+    "sealed-secrets": ("secrets", "Sealed Secrets"),
+    "cert-manager": ("tls", "cert-manager"),
+    "kyverno": ("policy", "Kyverno"),
+    "gatekeeper": ("policy", "OPA Gatekeeper"),
+    "keda": ("autoscaling", "KEDA"),
+    "karpenter": ("autoscaling", "Karpenter"),
+    "cluster-autoscaler": ("autoscaling", "Cluster Autoscaler"),
+    "longhorn": ("storage", "Longhorn"),
+    "rook-ceph": ("storage", "Rook Ceph"),
+    "velero": ("backup", "Velero"),
+    "aws-lb-controller": ("cloud", "AWS Load Balancer Controller"),
 }
+EDGE_KINDS = {k for k, (layer, _) in CATALOG.items() if layer == "edge"}
+LOGGING_KINDS = {k for k, (layer, _) in CATALOG.items() if layer == "logging"}
+DAEMON_KINDS = LOGGING_KINDS | {"cilium", "calico"}  # usually DaemonSets
+PLATFORM_DISPLAY = {k: d for k, (_, d) in CATALOG.items()}
 KONG_ADMIN_PORTS = {8001, 8444, 8002, 8445}  # Admin API (http/https) and Kong Manager (http/https)
 INGRESS_NGINX_RETIRED = datetime(2026, 4, 1, tzinfo=UTC)  # "best-effort maintenance until March 2026"
+PROMTAIL_EOL = datetime(2026, 3, 2, tzinfo=UTC)  # Grafana: "Promtail is end of life (EOL) as of March 2, 2026"
 
 
 def layer_of(kind: str) -> str:
-    if kind in EDGE_KINDS:
-        return "edge"
-    if kind in LOGGING_KINDS:
-        return "logging"
-    return "data"
+    return CATALOG.get(kind, ("data", ""))[0]
+
+
+# (substring of the image path, kind); first match wins. Paths are lower-cased, tag and digest removed.
+_IMAGE_RULES: list[tuple[str, str]] = [
+    ("ingress-nginx/controller", "ingress-nginx"),
+    ("kubernetes-ingress-controller", ""),  # Kong's controller, not the gateway
+    ("envoyproxy/gateway", "envoy-gateway"),
+    ("grafana/promtail", "promtail"),
+    ("grafana/alloy", "alloy"),
+    ("grafana/loki", "loki"),
+    ("opentelemetry-collector", "otel-collector"),
+    ("prometheus/prometheus", "prometheus"),
+    ("prom/prometheus", "prometheus"),
+    ("prometheus/alertmanager", "alertmanager"),
+    ("prom/alertmanager", "alertmanager"),
+    ("metrics-server/metrics-server", "metrics-server"),
+    ("coredns/coredns", "coredns"),
+    ("cilium/cilium", "cilium"),
+    ("calico/node", "calico"),
+    ("istio/pilot", "istio"),
+    ("linkerd/controller", "linkerd"),
+    ("linkerd/destination", "linkerd"),
+    ("argoproj/argocd", "argocd"),
+    ("fluxcd/source-controller", "flux"),
+    ("fluxcd/kustomize-controller", "flux"),
+    ("fluxcd/helm-controller", "flux"),
+    ("external-secrets/external-secrets", "external-secrets"),
+    ("sealed-secrets-controller", "sealed-secrets"),
+    ("jetstack/cert-manager-controller", "cert-manager"),
+    ("kyverno/kyverno", "kyverno"),
+    ("openpolicyagent/gatekeeper", "gatekeeper"),
+    ("kedacore/keda", "keda"),
+    ("karpenter/controller", "karpenter"),
+    ("cluster-autoscaler", "cluster-autoscaler"),
+    ("longhornio/longhorn-manager", "longhorn"),
+    ("rook/ceph", "rook-ceph"),
+    ("velero/velero", "velero"),
+    ("aws-load-balancer-controller", "aws-lb-controller"),
+]
 
 
 def classify_platform_image(image: str) -> str | None:
     repo = image.split("@")[0].lower()
-    path = repo.rsplit(":", 1)[0] if repo.count(":") > (1 if "://" in repo else 0) else repo
+    path = repo.rsplit(":", 1)[0] if ":" in repo.rsplit("/", 1)[-1] else repo
     last = path.rsplit("/", 1)[-1]
-    if "ingress-nginx/controller" in path:
-        return "ingress-nginx"
+    for needle, kind in _IMAGE_RULES:
+        if needle in path:
+            return kind or None
     if last in ("kong", "kong-gateway", "kong-enterprise-edition"):
         return "kong"
+    if last == "traefik" or last.endswith("-traefik"):  # k3s ships rancher/mirrored-library-traefik
+        return "traefik"
     if last in ("fluent-bit", "fluentbit"):
         return "fluent-bit"
     if last.startswith("fluentd"):
@@ -58,6 +132,42 @@ def classify_platform_image(image: str) -> str | None:
     if last == "vector" and ("timberio" in path or "vectordotdev" in path):
         return "vector"
     return None
+
+
+# What it means for users when a cluster service is down: (severity, impact sentence).
+IMPACT: dict[str, tuple[Severity, str]] = {
+    "coredns": (Severity.CRITICAL, "DNS resolution fails for every pod: services cannot find each other."),
+    "cilium": (Severity.CRITICAL, "Pods on affected nodes lose networking and policy enforcement."),
+    "calico": (Severity.CRITICAL, "Pods on affected nodes lose networking and policy enforcement."),
+    "istio": (Severity.HIGH, "New pods get no mesh config or certificates; workload certificates stop rotating."),
+    "linkerd": (Severity.HIGH, "Meshed pods cannot get identities or service discovery updates."),
+    "argocd": (
+        Severity.HIGH,
+        "Changes merged to Git are no longer applied to the cluster (including kubepilot fixes).",
+    ),
+    "flux": (Severity.HIGH, "Changes merged to Git are no longer applied to the cluster (including kubepilot fixes)."),
+    "external-secrets": (Severity.HIGH, "Secrets stop syncing from the secret store; rotations and new secrets fail."),
+    "sealed-secrets": (Severity.HIGH, "New or updated SealedSecrets are not decrypted into Secrets."),
+    "cert-manager": (Severity.HIGH, "Certificates are not issued or renewed and will expire."),
+    "kyverno": (
+        Severity.HIGH,
+        "Its admission webhooks may reject every create/update (failurePolicy Fail) or stop enforcing policy.",
+    ),
+    "gatekeeper": (Severity.HIGH, "Its admission webhook may reject every create/update or stop enforcing policy."),
+    "metrics-server": (Severity.HIGH, "HPAs cannot read CPU/memory and stop scaling; `kubectl top` fails."),
+    "keda": (Severity.HIGH, "Event-driven autoscaling stops: workloads stay at their current replica count."),
+    "karpenter": (Severity.HIGH, "No new nodes are provisioned: pods that need capacity stay Pending."),
+    "cluster-autoscaler": (Severity.HIGH, "No new nodes are added: pods that need capacity stay Pending."),
+    "longhorn": (Severity.CRITICAL, "Volumes cannot be attached or repaired: stateful pods cannot start."),
+    "rook-ceph": (Severity.CRITICAL, "Ceph-backed volumes may become unavailable."),
+    "velero": (Severity.MEDIUM, "Scheduled backups are not running."),
+    "prometheus": (Severity.HIGH, "Monitoring is blind: no metrics and no alerts fire."),
+    "alertmanager": (Severity.HIGH, "Alerts fire but nobody is notified."),
+    "loki": (Severity.HIGH, "Logs cannot be stored or queried."),
+    "aws-lb-controller": (Severity.HIGH, "LoadBalancer Services and Ingresses on AWS get no load balancer."),
+    "traefik": (Severity.CRITICAL, "Every route served by Traefik is unreachable from outside."),
+    "envoy-gateway": (Severity.CRITICAL, "Gateways managed by Envoy Gateway stop serving traffic."),
+}
 
 
 def _fid(*parts: str) -> str:
@@ -704,3 +814,78 @@ def logging_hosts(snap: Snapshot, comp: Component) -> list[tuple[str, str]]:
 def fluentbit_sections(snap: Snapshot, comp: Component) -> list[fluentbit.Section] | None:
     found = fluentbit_config(snap, comp)
     return found[1] if found else None
+
+
+# ---------------------------------------------------------------- cluster service components
+
+
+def check_service_component(snap: Snapshot, comp: Component) -> list[Finding]:
+    """Kind-specific checks for cluster services (DNS, CNI, mesh, telemetry agents, gateways)."""
+    from kubepilot.engine.components import _finding, _labels_match
+
+    out: list[Finding] = []
+    if comp.kind == "coredns" and comp.desired == 1:
+        out.append(
+            _finding(
+                comp,
+                "dns-single",
+                f"{comp.label}: a single replica serves all cluster DNS",
+                Severity.MEDIUM,
+                "Every pod depends on CoreDNS; with one replica, a node drain or crash breaks name resolution "
+                "cluster-wide until it restarts.",
+                category="config",
+            )
+        )
+    if comp.kind == "promtail" and snap.now >= PROMTAIL_EOL:
+        out.append(
+            _finding(
+                comp,
+                "eol",
+                f"{comp.label}: Promtail is end of life (March 2, 2026)",
+                Severity.MEDIUM,
+                "Grafana ended Promtail support: no fixes or updates, including security fixes. Migrate to Grafana "
+                "Alloy (it ships a converter for Promtail configs).",
+                category="security",
+                hints=[
+                    RemediationHint(
+                        kind="plan-migration",
+                        summary="Migrate Promtail to Grafana Alloy (`alloy convert --source-format=promtail`)",
+                    )
+                ],
+            )
+        )
+    if comp.kind == "traefik":
+        insecure = any("--api.insecure=true" in a or a == "--api.insecure" for c in comp.containers for a in c.args)
+        if insecure:
+            exposed = [
+                s
+                for s in snap.services
+                if s.namespace == comp.namespace
+                and s.external
+                and any(_labels_match(s.selector, p.labels) for p in comp.pods)
+                and any(p.port == 8080 or p.target_port in ("8080", "traefik") for p in s.ports)
+            ]
+            out.append(
+                _finding(
+                    comp,
+                    "dashboard",
+                    f"{comp.label}: dashboard/API enabled in insecure mode"
+                    + (" and exposed outside the cluster" if exposed else ""),
+                    Severity.CRITICAL if exposed else Severity.MEDIUM,
+                    "--api.insecure=true serves the Traefik dashboard and API on the `traefik` entrypoint (port 8080) "
+                    "without authentication, revealing every route, backend and middleware."
+                    + (" A LoadBalancer/NodePort Service publishes it." if exposed else ""),
+                    category="security",
+                    evidence=[Evidence(source="service", detail=f"{s.name}: {s.type}") for s in exposed],
+                    hints=[
+                        RemediationHint(
+                            kind="make-service-internal",
+                            params={"services": ",".join(s.name for s in exposed)},
+                            summary="Make the dashboard Service internal",
+                        )
+                    ]
+                    if exposed
+                    else [],
+                )
+            )
+    return out

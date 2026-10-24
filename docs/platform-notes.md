@@ -86,6 +86,45 @@ Notes:
 - ConfigMaps are read only for pods running Fluent Bit / Fluentd / Vector / ingress-nginx / Kong (mounted volumes and
   `--configmap`), one GET per name, with the optional `kubepilot-config` role.
 
+## Cluster operations packs — verified Oct 2026 (upstream sources)
+- **Traefik**: CRDs `traefik.io/v1alpha1` (`IngressRoute`, `Middleware`, …; the old `traefik.containo.us` group is gone
+  in v3). `--api.insecure=true` serves dashboard/API on the `traefik` entrypoint (:8080). k3s ships
+  `rancher/mirrored-library-traefik`.
+- **Gateway API** (`gateway.networking.k8s.io/v1`): Gateway conditions `Accepted`, `Programmed` (reason
+  `AddressNotAssigned`), listener `ResolvedRefs`; route parent conditions `Accepted` (`NoMatchingParent`,
+  `NotAllowedByListeners`) and `ResolvedRefs` (`BackendNotFound`, `RefNotPermitted`).
+- **Argo CD** (`argoproj.io/v1alpha1` Application): `status.sync.status` (OutOfSync), `status.health.status`
+  (Degraded/Missing/Progressing), `status.operationState.phase` (Failed/Error) + `message`, conditions
+  `ComparisonError`, `SyncError`, `InvalidSpecError`, `UnknownError`.
+- **Flux**: `kustomize.toolkit.fluxcd.io/v1`, `helm.toolkit.fluxcd.io/v2`, `source.toolkit.fluxcd.io/v1`; conditions
+  `Ready`, `Stalled`, `Reconciling`; `spec.suspend`.
+- **External Secrets** (`external-secrets.io/v1` storage version, `v1beta1` still read): ExternalSecret condition
+  `Ready` reason `SecretSyncedError`; `spec.target.name` defaults to the object name. Stores: condition `Ready`
+  (`InvalidStoreConfiguration`, `ValidationFailed`). **Sealed Secrets** (`bitnami.com/v1alpha1`): condition `Synced`.
+- **HPA** (`autoscaling/v2`): conditions `AbleToScale`, `ScalingActive` (`FailedGetResourceMetric`…),
+  `ScalingLimited` (`TooManyReplicas`). **KEDA** (`keda.sh/v1alpha1`): `Ready`, `Active`, `Fallback`, `Paused`.
+  **Karpenter** (`karpenter.sh/v1`): NodePool `Ready`/`NodeClassReady`/`ValidationSucceeded`, `spec.limits` vs
+  `status.resources`; NodeClaim `Launched`/`Registered`/`Initialized`. Cluster Autoscaler: pod events
+  `NotTriggerScaleUp` / `FailedScaleUp`.
+- **Storage**: default class annotation `storageclass.kubernetes.io/is-default-class`; WaitForFirstConsumer PVCs are
+  not flagged. **Longhorn** (`longhorn.io/v1beta2` Volume): `status.robustness` healthy/degraded/faulted/unknown.
+  **Rook** (`ceph.rook.io/v1` CephCluster): `status.ceph.health` HEALTH_OK/WARN/ERR.
+- **Kyverno** (`kyverno.io/v1` policies, condition `Ready`); **PolicyReports** (`wgpolicyk8s.io/v1alpha2`) keep
+  `scope` and `results[]` (`pass|fail|warn|error`, `severity`) at the top level. Admission denials appear as
+  `FailedCreate` events: `admission webhook "…" denied the request: …`.
+- **Velero** (`velero.io/v1`): Backup `status.phase` (Completed, PartiallyFailed, Failed, FailedValidation, …),
+  BackupStorageLocation `status.phase` Available/Unavailable, Schedule `status.lastBackup`, backups labelled
+  `velero.io/schedule-name`.
+- **Prometheus operator** (`monitoring.coreos.com/v1`): conditions `Available`, `Reconciled`. **Alertmanager
+  webhook** payload v4: `alerts[].{status, labels, annotations, startsAt, fingerprint}`; firing alerts are re-sent
+  every `repeat_interval`, so kubepilot keeps the latest state per fingerprint and a 6 h window.
+- **metrics-server** (`metrics.k8s.io/v1beta1` PodMetrics): `containers[].usage.{cpu,memory}` — a short-window
+  average, not a peak.
+- **Version skew**: kubelet must not be newer than kube-apiserver and may be up to 3 minor versions older.
+- **Promtail** is EOL since March 2, 2026 (Grafana Loki docs); Alloy replaces it.
+- **Istio** injection: namespace label `istio-injection=enabled` or `istio.io/rev`; sidecar container `istio-proxy`;
+  pod opt-out `sidecar.istio.io/inject=false`. Linkerd sidecar `linkerd-proxy`.
+
 ## Data-system rules of thumb used by checks
 - JVM heap ≤ 75% of the container limit (Kafka); ≤ 50% for OpenSearch/Elasticsearch (page cache).
 - Kafka `min.insync.replicas` must be < replication factor to tolerate one broker down; acks=all writes fail

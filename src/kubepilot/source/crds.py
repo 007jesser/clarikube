@@ -25,6 +25,39 @@ OPERATOR_CRDS: list[tuple[str, tuple[str, ...], str, str]] = [
     ("redis.redis.opstreelabs.in", ("v1beta2",), "redisreplications", "RedisReplication"),
     ("argoproj.io", ("v1alpha1",), "applications", "Application"),
     ("cert-manager.io", ("v1",), "certificates", "Certificate"),
+    # gateways
+    ("traefik.io", ("v1alpha1",), "ingressroutes", "IngressRoute"),
+    ("traefik.io", ("v1alpha1",), "middlewares", "Middleware"),
+    ("gateway.networking.k8s.io", ("v1", "v1beta1"), "gateways", "Gateway"),
+    ("gateway.networking.k8s.io", ("v1", "v1beta1"), "httproutes", "HTTPRoute"),
+    # GitOps controllers
+    ("kustomize.toolkit.fluxcd.io", ("v1",), "kustomizations", "Kustomization"),
+    ("helm.toolkit.fluxcd.io", ("v2", "v2beta2"), "helmreleases", "HelmRelease"),
+    ("source.toolkit.fluxcd.io", ("v1", "v1beta2"), "gitrepositories", "GitRepository"),
+    ("source.toolkit.fluxcd.io", ("v1", "v1beta2"), "helmrepositories", "HelmRepository"),
+    ("source.toolkit.fluxcd.io", ("v1", "v1beta2"), "ocirepositories", "OCIRepository"),
+    # secrets
+    ("external-secrets.io", ("v1", "v1beta1"), "externalsecrets", "ExternalSecret"),
+    ("external-secrets.io", ("v1", "v1beta1"), "secretstores", "SecretStore"),
+    ("external-secrets.io", ("v1", "v1beta1"), "clustersecretstores", "ClusterSecretStore"),
+    ("bitnami.com", ("v1alpha1",), "sealedsecrets", "SealedSecret"),
+    # monitoring, autoscaling, storage
+    ("monitoring.coreos.com", ("v1",), "prometheuses", "Prometheus"),
+    ("monitoring.coreos.com", ("v1",), "alertmanagers", "Alertmanager"),
+    ("keda.sh", ("v1alpha1",), "scaledobjects", "ScaledObject"),
+    ("keda.sh", ("v1alpha1",), "scaledjobs", "ScaledJob"),
+    ("karpenter.sh", ("v1",), "nodepools", "NodePool"),
+    ("karpenter.sh", ("v1",), "nodeclaims", "NodeClaim"),
+    ("longhorn.io", ("v1beta2",), "volumes", "Volume"),
+    ("ceph.rook.io", ("v1",), "cephclusters", "CephCluster"),
+    # policy, backup
+    ("kyverno.io", ("v1",), "clusterpolicies", "ClusterPolicy"),
+    ("kyverno.io", ("v1",), "policies", "Policy"),
+    ("wgpolicyk8s.io", ("v1alpha2",), "policyreports", "PolicyReport"),
+    ("wgpolicyk8s.io", ("v1alpha2",), "clusterpolicyreports", "ClusterPolicyReport"),
+    ("velero.io", ("v1",), "backups", "Backup"),
+    ("velero.io", ("v1",), "schedules", "Schedule"),
+    ("velero.io", ("v1",), "backupstoragelocations", "BackupStorageLocation"),
     ("configuration.konghq.com", ("v1",), "kongplugins", "KongPlugin"),
     ("configuration.konghq.com", ("v1",), "kongclusterplugins", "KongClusterPlugin"),
 ]
@@ -34,5 +67,7 @@ CR_GROUPS = {g for g, _, _, _ in OPERATOR_CRDS}
 # Pods whose ConfigMaps kubepilot reads (config of platform components it checks). Nothing else is fetched.
 
 PLATFORM_IMAGES = re.compile(
-    r"fluent-bit|fluentbit|fluentd|timberio/vector|/vector:|ingress-nginx/controller|kong", re.I
+    r"fluent-bit|fluentbit|fluentd|timberio/vector|/vector:|ingress-nginx/controller|kong|traefik|grafana/alloy|"
+    r"promtail|opentelemetry-collector",
+    re.I,
 )

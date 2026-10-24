@@ -34,7 +34,7 @@ class WorkloadRef(BaseModel, frozen=True):
 
     @property
     def key(self) -> str:
-        return f"{self.kind}/{self.namespace}/{self.name}"
+        return f"{self.kind}/{self.namespace}/{self.name}" if self.namespace else f"{self.kind}/{self.name}"
 
 
 # ---------------------------------------------------------------- pod state
@@ -166,6 +166,7 @@ class Node(BaseModel):
     allocatable_cpu: str | None = None
     allocatable_memory: str | None = None
     taints: list[str] = Field(default_factory=list)
+    kubelet_version: str | None = None
 
 
 class WorkloadSpec(BaseModel):
@@ -214,6 +215,7 @@ class ServiceInfo(BaseModel):
     ports: list[ServicePort] = Field(default_factory=list)
     headless: bool = False
     external: bool = False  # LoadBalancer/NodePort or externalIPs: reachable from outside the cluster
+    lb_assigned: bool | None = None  # LoadBalancer only: has the cloud/LB controller assigned an address?
 
     def dns_names(self) -> set[str]:
         n, ns = self.name, self.namespace
@@ -227,6 +229,54 @@ class PDBInfo(BaseModel):
     min_available: str | None = None
     max_unavailable: str | None = None
     disruptions_allowed: int | None = None
+
+
+class StorageClassInfo(BaseModel):
+    name: str
+    provisioner: str = ""
+    default: bool = False
+    binding_mode: str = "Immediate"
+
+
+class NamespaceInfo(BaseModel):
+    name: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class HPAInfo(BaseModel):
+    namespace: str
+    name: str
+    target_kind: str = ""
+    target_name: str = ""
+    min_replicas: int = 1
+    max_replicas: int = 1
+    current_replicas: int = 0
+    desired_replicas: int = 0
+    conditions: list[Condition] = Field(default_factory=list)
+
+
+class ContainerUsage(BaseModel):
+    cpu_millis: int = 0
+    memory_bytes: int = 0
+
+
+class PodMetricsInfo(BaseModel):
+    namespace: str
+    pod: str
+    containers: dict[str, ContainerUsage] = Field(default_factory=dict)
+
+
+class FiringAlert(BaseModel):
+    """A Prometheus alert received from Alertmanager's webhook."""
+
+    name: str
+    status: str = "firing"
+    severity: str = "warning"
+    namespace: str | None = None
+    labels: dict[str, str] = Field(default_factory=dict)
+    summary: str = ""
+    starts_at: datetime | None = None
+    fingerprint: str = ""
 
 
 class IngressPath(BaseModel):
@@ -419,3 +469,6 @@ class SecurityIncident(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
     suppressed_alerts: int = 0
     remediations: list[RemediationHint] = Field(default_factory=list)
+
+
+HPAInfo.model_rebuild()

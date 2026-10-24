@@ -88,6 +88,17 @@ AI:  orders is not the problem. It writes to Kafka data/events (env KAFKA_BOOTST
 | **Fluent Bit** (Fluentd, Vector: coverage) | nodes without a log agent (untolerated taints) → toleration PR · `Retry_Limit` default 1 drops logs → PR · no `Mem_Buf_Limit` → PR · logs leaving the cluster without TLS · credentials inline in the ConfigMap · **destination unhealthy → logs not delivered** |
 | **Routing** | Ingress → missing Service · Ingress → Service with no ready pods (users get 503), linked to the broken workload |
 | **Certificates** (cert-manager) | expired · expiring within 7 days (renewal failing, with the ACME error) · not ready |
+| **Traefik / Gateway API** | Traefik insecure dashboard exposed · IngressRoute → missing Service / Middleware · Gateway not Programmed (no address) · listener cert missing · HTTPRoute not attached (NotAllowedByListeners…) / BackendNotFound |
+| **GitOps controllers** | Argo CD sync failing (with the apply error) · app Degraded/Missing · manual drift · Flux Kustomization / HelmRelease / source failing (e.g. SSH host key) · suspended reconciliation |
+| **Secrets** | ExternalSecret cannot sync (provider error) → **named as root cause of the app's missing Secret** · SecretStore invalid · SealedSecret cannot be decrypted |
+| **Autoscaling** | HPA blind (no metrics) · HPA pinned at max · KEDA scaler failing / on fallback · Karpenter NodePool at limits · NodeClaim launch failure (capacity) · Cluster Autoscaler "won't scale up" reasons on Pending pods |
+| **Storage** | PVC using a missing StorageClass (**links to the Pending Kafka broker**) · no default class · several defaults · Longhorn volume degraded/faulted · Ceph HEALTH_WARN/ERR |
+| **Policy** | Pods blocked by an admission webhook (Kyverno/Gatekeeper denial message) · PolicyReport failures per workload · policy not ready |
+| **Backups** (Velero) | backup location unavailable · last scheduled backup failed/partial · no backup for days · no schedule at all |
+| **Monitoring & alerts** | Prometheus / Alertmanager not available · **firing Alertmanager alerts attached to the workload they're about** (webhook ingest) |
+| **Usage** (metrics-server) | memory at ≥90% of limit (OOM imminent) → limit PR · CPU throttled at limit · over-requested memory (rightsizing) · cluster requested-vs-used capacity |
+| **Cluster services** | CoreDNS down / single replica · Cilium/Calico agent down per node · istiod down · sidecar missing in meshed namespace / not ready · Argo CD/Flux/ESO/cert-manager/Kyverno/KEDA/Karpenter/Longhorn/Velero/Prometheus down with the impact spelled out · Promtail EOL (March 2026) |
+| **Nodes & cloud** | kubelet/API server version skew · LoadBalancer Service without an address (LB controller / pool exhausted) |
 
 Connections are inferred from env var values that point at a Service (`redis://cache.data:6379`,
 `kafka-0.kafka-brokers:9092`, …), from log agent outputs, and from Ingress backends. Env values and ConfigMap
@@ -226,6 +237,7 @@ Prompts: `triage_cluster`, `fix_workload`, `incident_response`.
 | `KUBEPILOT_PLAN_TTL_MINUTES` | `30` | plan expiry |
 | `KUBEPILOT_INGEST_TOKEN` | — | **required** bearer token for the Falco webhook |
 | `KUBEPILOT_LLM_MODEL`, `KUBEPILOT_LLM_BASE_URL`, `KUBEPILOT_LLM_API_KEY` | —, Ollama, — | for `kubepilot ask` |
+| Alertmanager webhook | — | `receivers: [{name: kubepilot, webhook_configs: [{url: "http://<host>:2801/alertmanager", http_config: {authorization: {credentials: "<KUBEPILOT_INGEST_TOKEN>"}}}]}]` |
 | `KUBEPILOT_READ_LOGS` | `false` (`true` in fixture mode) | read error signatures from failing containers' logs; needs the optional `kubepilot-logs` ClusterRole in `deploy/rbac.yaml` |
 
 ## CLI
@@ -248,13 +260,14 @@ kubepilot is **alpha**. Known limits:
 - Helm: values are edited, chart templates never; a value the chart only sets by default must be set explicitly first. The rendered diff is checked by your CD tool, not by kubepilot's policy guard.
 - Operator support (CRD versions, labels, status fields) was verified against the operators' source in Oct 2026 ([platform notes](docs/platform-notes.md)), not yet against every live operator version. Operators not on the list are seen as plain StatefulSets.
 - Checks read Kubernetes state only (no client connections): topic-level settings, consumer lag, shard allocation and live WAF/gateway metrics are out of scope.
-- Edge: ingress-nginx and Kong today. Gateway API (HTTPRoute), Traefik, Envoy Gateway, Istio and NGINX Inc.'s controller are next. Fluent Bit YAML configs are checked but only classic `.conf` is edited automatically; Fluent Operator CRDs are not read yet.
+- Edge: ingress-nginx, Kong, Traefik and Gateway API resources (any implementation). Envoy Gateway / Istio gateways are seen through Gateway API status, not their own config. Fluent Bit YAML configs are checked but only classic `.conf` is edited automatically; Fluent Operator CRDs are not read yet.
+- Cilium Hubble flow drops, Gatekeeper constraint objects and cloud-specific add-ons (IRSA, workload identity) are not read yet. metrics-server gives current usage, not peaks.
 - Rollback compares image and resources only, not env/args/probes.
 - Tested end to end with Claude. `kubepilot ask` makes local models usable, but they are not benchmarked yet.
 - The Falco alert store is local SQLite (single replica).
 
 ## Roadmap
-Gateway API / Traefik / Envoy Gateway / Istio · Prometheus & Loki pipelines · Flux status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
+Cilium Hubble drops → least-privilege NetworkPolicies · Gatekeeper constraints · Prometheus queries for peak usage · Flux status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
 
 ## Contributing & security
 Issues and PRs welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately, per [SECURITY.md](SECURITY.md).

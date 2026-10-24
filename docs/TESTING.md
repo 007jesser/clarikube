@@ -126,6 +126,15 @@ sleep 60 && make lab-verify PHASE=fixed
 ### Approval-mode test (optional)
 Set `KUBEPILOT_APPROVAL_MODE=cli` in `lab/mcp.sh`; `commit_plan` should then refuse until you run `make lab-approve ID=<plan-id>` on the lab machine.
 
+## 5a. What lights up on a plain k3s
+
+k3s ships Traefik, metrics-server, CoreDNS and the local-path StorageClass, so even without extra installs kubepilot
+checks them: CoreDNS replicas, Traefik routes (IngressRoute → missing Service/Middleware), LoadBalancers without an
+address (ServiceLB), memory near limits (metrics-server). Ask: "What platform issues does the cluster have?"
+
+To feed Prometheus alerts, point an Alertmanager receiver at `http://<host>:2801/alertmanager` with the ingest
+token as bearer credentials (same receiver as Falco: `make lab-ingest`).
+
 ## 5b. Optional: data tier (Redis, RabbitMQ, OpenSearch)
 
 Needs ~1.5 GB more RAM (`SKIP_SEARCH=1` leaves OpenSearch out).

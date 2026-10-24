@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from kubepilot import normalize
-from kubepilot.models import FalcoAlert
+from kubepilot.models import FalcoAlert, FiringAlert
 
 MAX_BODY_BYTES = 256 * 1024
 MAX_OUTPUT_CHARS = 4000
@@ -31,7 +31,15 @@ CREATE TABLE IF NOT EXISTS falco_alerts (
     payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_falco_time ON falco_alerts(time);
+CREATE TABLE IF NOT EXISTS prom_alerts (
+    fingerprint TEXT PRIMARY KEY,
+    updated TEXT NOT NULL,
+    status TEXT NOT NULL,
+    namespace TEXT,
+    payload TEXT NOT NULL
+);
 """
+MAX_ALERT_SUMMARY = 500
 
 
 class AlertStore:
@@ -79,6 +87,32 @@ class AlertStore:
         with self._lock:
             rows = self._db.execute(q, args).fetchall()
         return [FalcoAlert.model_validate_json(r[0]) for r in rows]
+
+    # ---------------------------------------------------------------- Prometheus alerts (Alertmanager webhook)
+
+    def upsert_prometheus(self, raw: dict[str, Any], now: datetime) -> FiringAlert:
+        """Alertmanager re-sends active alerts; keep the latest state per fingerprint (resolved ones too)."""
+        alert = normalize.firing_alert(raw)
+        key = alert.fingerprint or f"{alert.name}|{sorted(alert.labels.items())}"
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO prom_alerts(fingerprint, updated, status, namespace, payload) VALUES (?,?,?,?,?) "
+                "ON CONFLICT(fingerprint) DO UPDATE SET updated=excluded.updated, status=excluded.status, "
+                "namespace=excluded.namespace, payload=excluded.payload",
+                (key, now.isoformat(), alert.status, alert.namespace, alert.model_dump_json()),
+            )
+            self._db.commit()
+        return alert
+
+    def firing(self, since: datetime, namespace: str | None = None) -> list[FiringAlert]:
+        q = "SELECT payload FROM prom_alerts WHERE status = 'firing' AND updated >= ?"
+        args: list[Any] = [since.isoformat()]
+        if namespace:
+            q += " AND namespace = ?"
+            args.append(namespace)
+        with self._lock:
+            rows = self._db.execute(q, args).fetchall()
+        return [FiringAlert.model_validate_json(r[0]) for r in rows]
 
     def prune(self, now: datetime) -> int:
         with self._lock:
@@ -128,7 +162,41 @@ def make_ingest_app(store: AlertStore, token: str | None = None) -> Any:
                 stored += 1
         return JSONResponse({"stored": stored})
 
+    async def alertmanager(request: Request) -> JSONResponse | PlainTextResponse:
+        """Alertmanager webhook_config receiver (payload version 4)."""
+        from datetime import UTC
+        from datetime import datetime as dt
+
+        if token:
+            given = request.headers.get("authorization", "")
+            if not hmac.compare_digest(given, f"Bearer {token}"):
+                return PlainTextResponse("unauthorized", status_code=401)
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_BODY_BYTES:
+                return PlainTextResponse("payload too large", status_code=413)
+            chunks.append(chunk)
+        try:
+            data = json.loads(b"".join(chunks))
+        except json.JSONDecodeError:
+            return PlainTextResponse("invalid json", status_code=400)
+        stored = 0
+        now = dt.now(UTC)
+        for item in (data.get("alerts") or []) if isinstance(data, dict) else []:
+            if isinstance(item, dict) and isinstance(item.get("labels"), dict):
+                store.upsert_prometheus(item, now)
+                stored += 1
+        return JSONResponse({"stored": stored})
+
     async def healthz(_: Request) -> PlainTextResponse:
         return PlainTextResponse("ok")
 
-    return Starlette(routes=[Route("/falco", falco, methods=["POST"]), Route("/healthz", healthz)])
+    return Starlette(
+        routes=[
+            Route("/falco", falco, methods=["POST"]),
+            Route("/alertmanager", alertmanager, methods=["POST"]),
+            Route("/healthz", healthz),
+        ]
+    )

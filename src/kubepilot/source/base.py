@@ -13,16 +13,21 @@ from kubepilot.models import (
     CustomResource,
     Event,
     FalcoAlert,
+    FiringAlert,
+    HPAInfo,
     IngressClassInfo,
     IngressInfo,
+    NamespaceInfo,
     NetworkPolicyInfo,
     Node,
     PDBInfo,
     Pod,
+    PodMetricsInfo,
     PVCInfo,
     ReplicaSetInfo,
     RoleInfo,
     ServiceInfo,
+    StorageClassInfo,
     VulnerabilityReport,
     WorkloadRef,
     WorkloadSpec,
@@ -52,6 +57,11 @@ class RawCluster:
     ingresses: list[Raw] = field(default_factory=list)
     ingress_classes: list[Raw] = field(default_factory=list)
     config_maps: list[Raw] = field(default_factory=list)  # only those of detected platform components
+    storage_classes: list[Raw] = field(default_factory=list)
+    namespaces: list[Raw] = field(default_factory=list)
+    hpas: list[Raw] = field(default_factory=list)
+    pod_metrics: list[Raw] = field(default_factory=list)  # metrics.k8s.io, if metrics-server is installed
+    server_version: str | None = None
 
 
 @dataclass
@@ -77,6 +87,13 @@ class Snapshot:
     ingresses: list[IngressInfo] = field(default_factory=list)
     ingress_classes: list[IngressClassInfo] = field(default_factory=list)
     config_maps: list[ConfigMapInfo] = field(default_factory=list)
+    storage_classes: list[StorageClassInfo] = field(default_factory=list)
+    namespaces: list[NamespaceInfo] = field(default_factory=list)
+    hpas: list[HPAInfo] = field(default_factory=list)
+    pod_metrics: list[PodMetricsInfo] = field(default_factory=list)
+    alerts: list[FiringAlert] = field(default_factory=list)  # Prometheus alerts via Alertmanager webhook
+    server_version: str | None = None
+    metrics_available: bool = False
 
     @classmethod
     def build(
@@ -85,6 +102,7 @@ class Snapshot:
         now: datetime,
         falco: list[FalcoAlert] | None = None,
         warnings: list[str] | None = None,
+        alerts: list[FiringAlert] | None = None,
     ) -> Snapshot:
         owners = normalize.OwnerIndex(raw.replicasets, raw.jobs)
         return cls(
@@ -107,14 +125,25 @@ class Snapshot:
             ingresses=[normalize.ingress(i) for i in raw.ingresses],
             ingress_classes=[normalize.ingress_class(i) for i in raw.ingress_classes],
             config_maps=[normalize.config_map(c) for c in raw.config_maps],
+            storage_classes=[normalize.storage_class(c) for c in raw.storage_classes],
+            namespaces=[normalize.namespace(n) for n in raw.namespaces],
+            hpas=[normalize.hpa(h) for h in raw.hpas],
+            pod_metrics=[normalize.pod_metrics(p) for p in raw.pod_metrics],
+            alerts=list(alerts or []),
+            server_version=raw.server_version,
+            metrics_available=bool(raw.pod_metrics),
         )
 
     # ------------------------------------------------------------ lookups
 
     def workloads(self) -> list[WorkloadRef]:
+        """Workloads with pods, plus controllers that have none (scaled to zero, or pods blocked by admission)."""
         seen: dict[str, WorkloadRef] = {}
         for p in self.pods:
             seen.setdefault(p.workload.key, p.workload)
+        for s in self.specs:
+            if s.owner is None:
+                seen.setdefault(s.ref.key, s.ref)
         return sorted(seen.values(), key=lambda w: w.key)
 
     def pods_of(self, wl: WorkloadRef) -> list[Pod]:

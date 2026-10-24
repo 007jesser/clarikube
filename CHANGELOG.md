@@ -6,6 +6,9 @@ Every layer around the apps, data systems and the full fix lifecycle.
 - Log pipeline: Fluent Bit (node coverage → toleration PR, Retry_Limit/Mem_Buf_Limit → config PR, TLS, inline credentials, undeliverable destination), Fluentd/Vector coverage. Config parsed from ConfigMaps, never returned.
 - Routing (Ingress → missing/unready backends, linked to the broken workload) and cert-manager certificates (expired, expiring, renewal failing).
 - Multi-edit plans: several fixes in the same file merge into one diff.
+- Cluster operations packs: Traefik + Gateway API routes, Argo CD / Flux health, External Secrets / Sealed Secrets (named as root cause of missing Secrets), HPA / KEDA / Karpenter / Cluster Autoscaler, StorageClasses / Longhorn / Rook Ceph, Kyverno / PolicyReports / admission denials, Velero, Prometheus operator, Alertmanager alerts (new `/alertmanager` webhook), metrics-server usage (OOM risk, throttling, rightsizing, capacity), node version skew, pending LoadBalancers, Istio/Linkerd sidecars.
+- Cluster service catalog with user-facing impact: CoreDNS, Cilium, Calico, Istio, Linkerd, Argo CD, Flux, ESO, Sealed Secrets, cert-manager, Kyverno, Gatekeeper, KEDA, Karpenter, Cluster Autoscaler, Longhorn, Rook, Velero, Prometheus, Alertmanager, metrics-server, Loki, Promtail (EOL), Alloy, OTel Collector, Traefik, Envoy Gateway, AWS LB controller.
+- API discovery before CR listing; controllers without pods are diagnosable.
 - Component detection: Kafka (Strimzi), RabbitMQ (operator), OpenSearch/Elasticsearch (operator, ECK), Redis, PostgreSQL (CloudNativePG, Zalando), MongoDB, plus Helm-installed and plain StatefulSets.
 - ~25 deterministic component checks: quorum, Kafka replication and min.insync, JVM heap vs limit, PVC state, PDB, spread, auth disabled, external exposure, operator status.
 - Dependency graph from env values (values never output) and "Likely root cause" findings that blame the broken dependency, ranked by log evidence.

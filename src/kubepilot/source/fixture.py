@@ -43,8 +43,12 @@ _KIND_FIELD = {
     "Ingress": "ingresses",
     "IngressClass": "ingress_classes",
     "ConfigMap": "config_maps",
+    "StorageClass": "storage_classes",
+    "Namespace": "namespaces",
+    "HorizontalPodAutoscaler": "hpas",
+    "PodMetrics": "pod_metrics",
 }
-_CLUSTER_SCOPED = {"Node", "ClusterRole", "ClusterRoleBinding", "IngressClass"}
+_CLUSTER_SCOPED = {"Node", "ClusterRole", "ClusterRoleBinding", "IngressClass", "StorageClass", "Namespace"}
 
 
 def _iter_objects(doc: Any) -> list[dict[str, Any]]:
@@ -75,6 +79,8 @@ class FixtureSource:
             data = yaml.safe_load(meta.read_text()) or {}
             if data.get("now"):
                 self._now = normalize.ts(data["now"]) or self._now
+            if data.get("server_version"):
+                self._raw.server_version = str(data["server_version"])
         for f in sorted(self.dir.glob("*.yaml")):
             if f.name == "meta.yaml":
                 continue
@@ -85,6 +91,12 @@ class FixtureSource:
                         attr = "custom_resources"
                     if attr:
                         getattr(self._raw, attr).append(obj)
+        self._alerts = []
+        am = self.dir / "alertmanager.jsonl"
+        if am.exists():
+            for line in am.read_text().splitlines():
+                if line.strip():
+                    self._alerts.append(normalize.firing_alert(json.loads(line)))
         self._falco = []
         falco = self.dir / "falco.jsonl"
         if falco.exists():
@@ -116,7 +128,10 @@ class FixtureSource:
                         )
                     ]
                     for attr in RawCluster.__dataclass_fields__
-                }
+                    if isinstance(getattr(self._raw, attr), list)
+                },
+                server_version=self._raw.server_version,
             )
         falco = [a for a in self._falco if not namespace or a.namespace == namespace]
-        return Snapshot.build(raw, now=self._now, falco=falco)
+        alerts = [a for a in self._alerts if not namespace or a.namespace == namespace]
+        return Snapshot.build(raw, now=self._now, falco=falco, alerts=alerts)

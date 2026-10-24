@@ -24,8 +24,11 @@ Workflow:
 1. Start broad: cluster_health (or find_problems / security_triage).
 2. Drill in: diagnose_workload for apps; diagnose_component for platform components — data stores (Kafka,
    RabbitMQ, OpenSearch, Elasticsearch, Redis, PostgreSQL, MongoDB), edge (ingress-nginx + ModSecurity, Kong)
-   and log pipelines (Fluent Bit, Fluentd, Vector); investigate_security for security. When a finding says
-   "Likely root cause: <component>" or "logs are not being delivered to <component>", diagnose that next.
+   log pipelines (Fluent Bit, Fluentd, Vector, Promtail, Alloy, OTel) and cluster services (CoreDNS, Cilium,
+   Calico, Istio, Linkerd, Argo CD, Flux, External Secrets, cert-manager, Kyverno, KEDA, Karpenter, Longhorn,
+   Velero, Prometheus, metrics-server); investigate_security for security. cluster_health also lists platform
+   issues (routing, TLS, GitOps sync, secret sync, autoscaling, storage, policy denials, backups, alerts, nodes).
+   When a finding says "Likely root cause: <X>", investigate X next instead of the app.
 3. To fix: plan_remediation -> show the diff, policy results and notes to the human -> only after
    explicit human approval, commit_plan. Fixes become a Git branch/PR; nothing is applied to the cluster.
 4. After the PR is merged and synced: verify_fix. If the change made things worse: plan_revert (same

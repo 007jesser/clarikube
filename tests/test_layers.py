@@ -84,7 +84,7 @@ def test_fluent_bit_checks_and_pipeline(kp: KubePilot) -> None:
 
 
 def test_routing_and_certificates(kp: KubePilot) -> None:
-    rows = kp.cluster_health()["routing_and_certificates"]
+    rows = kp.cluster_health()["platform_issues"]
     got = {r["title"] for r in rows}
     assert "Ingress shop/storefront: shop.example.com/ has no ready backend (frontend)" in got
     assert "Ingress shop/storefront routes shop.example.com/checkout to missing Service checkout-svc" in got
