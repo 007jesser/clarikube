@@ -1,5 +1,5 @@
 [project]
-name = "kubemedic"
+name = "clarikube"
 version = "0.2.0"
 description = "Model-agnostic MCP server for safe Kubernetes diagnosis, security triage and GitOps-based remediation"
 readme = "README.md"
@@ -29,12 +29,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/007jesser/kubemedic"
-Issues = "https://github.com/007jesser/kubemedic/issues"
-Changelog = "https://github.com/007jesser/kubemedic/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/007jesser/clarikube"
+Issues = "https://github.com/007jesser/clarikube/issues"
+Changelog = "https://github.com/007jesser/clarikube/blob/main/CHANGELOG.md"
 
 [project.scripts]
-kubemedic = "kubemedic.cli:main"
+clarikube = "clarikube.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]
@@ -63,12 +63,12 @@ ignore = ["S101", "S603", "S607", "RUF005"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "B"]
 "scripts/gen_ops_fixture.py" = ["E501"]  # fixture data generator: long literal messages
-"src/kubemedic/report.py" = ["E501"]  # inline CSS and HTML template strings
+"src/clarikube/report.py" = ["E501"]  # inline CSS and HTML template strings
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["kubemedic"]
+packages = ["clarikube"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
@@ -76,5 +76,5 @@ module = ["kubernetes.*", "ruamel.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["kubemedic.source.kube"]
+module = ["clarikube.source.kube"]
 disallow_untyped_calls = false  # the kubernetes client ships without type hints

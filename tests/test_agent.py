@@ -1,4 +1,4 @@
-"""`kubemedic ask` agent loop against a scripted OpenAI-compatible endpoint."""
+"""`clarikube ask` agent loop against a scripted OpenAI-compatible endpoint."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from kubemedic import agent
-from kubemedic.changes import PlanStore
-from kubemedic.service import Kubemedic
+from clarikube import agent
+from clarikube.changes import PlanStore
+from clarikube.service import Clarikube
 
 
 class Scripted:
@@ -36,7 +36,7 @@ def call(tool: str, **args: Any) -> dict[str, Any]:
     }
 
 
-def test_tool_loop_and_answer(kp: Kubemedic) -> None:
+def test_tool_loop_and_answer(kp: Clarikube) -> None:
     fake = Scripted(
         call("diagnose_workload", namespace="shop", name="orders"),
         {"role": "assistant", "content": "Kafka data/events is the root cause."},
@@ -55,14 +55,14 @@ def test_tool_loop_and_answer(kp: Kubemedic) -> None:
     assert "sk_live" not in tool_msg["content"]
 
 
-def test_commit_is_not_available_to_the_model(kp: Kubemedic) -> None:
+def test_commit_is_not_available_to_the_model(kp: Clarikube) -> None:
     fake = Scripted(call("commit_plan", plan_id="x", approval_token="y"), {"role": "assistant", "content": "ok"})
     tr = agent.ask(kp, "commit it", model="m", base_url="http://llm/v1", post=fake)
     assert tr.steps[0].ok is False
     assert "unavailable tool" in fake.requests[1]["payload"]["messages"][-1]["content"]
 
 
-def test_inline_json_tool_call_from_small_models(kp: Kubemedic) -> None:
+def test_inline_json_tool_call_from_small_models(kp: Clarikube) -> None:
     fake = Scripted(
         {
             "role": "assistant",
@@ -74,7 +74,7 @@ def test_inline_json_tool_call_from_small_models(kp: Kubemedic) -> None:
     assert [s.tool for s in tr.steps] == ["list_components"] and tr.answer == "5 components."
 
 
-def test_truncation_and_max_steps(kp: Kubemedic) -> None:
+def test_truncation_and_max_steps(kp: Clarikube) -> None:
     fake = Scripted(*[call("cluster_health")] * 3)
     tr = agent.ask(kp, "loop", model="m", base_url="http://llm/v1", post=fake, max_steps=3, max_tool_chars=200)
     assert tr.stopped == "max_steps" and len(tr.steps) == 3
@@ -82,7 +82,7 @@ def test_truncation_and_max_steps(kp: Kubemedic) -> None:
     assert json.loads(json.dumps(tr.to_json()))["stopped"] == "max_steps"
 
 
-def test_human_commit_path(kp: Kubemedic, gitops_repo: Path) -> None:
+def test_human_commit_path(kp: Clarikube, gitops_repo: Path) -> None:
     p = kp.plan_remediation("data", "events")
     store: PlanStore = kp._require_plans()
     with pytest.raises(PermissionError, match="token required"):
@@ -92,8 +92,8 @@ def test_human_commit_path(kp: Kubemedic, gitops_repo: Path) -> None:
     assert any(e["event"] == "plan_approved_terminal" for e in store.history(50))
 
 
-def test_cli_commit_refuses_without_tty(kp: Kubemedic, monkeypatch: pytest.MonkeyPatch) -> None:
-    from kubemedic import cli
+def test_cli_commit_refuses_without_tty(kp: Clarikube, monkeypatch: pytest.MonkeyPatch) -> None:
+    from clarikube import cli
 
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     assert cli._confirm_on_tty("? ") is False

@@ -22,7 +22,7 @@ have not yet been checked against a live cluster in this repo's CI.
 ## Trivy Operator — **verify**
 - CRD `vulnerabilityreports.aquasecurity.github.io/v1alpha1`.
 - Labels: `trivy-operator.resource.kind|name|namespace`, `trivy-operator.container.name`.
-  For Deployments the scanned resource is the **ReplicaSet**; kubemedic maps it to the Deployment.
+  For Deployments the scanned resource is the **ReplicaSet**; clarikube maps it to the Deployment.
 - Fields: `report.artifact.repository|tag`, `report.registry.server`,
   `report.vulnerabilities[].vulnerabilityID|resource|installedVersion|fixedVersion|severity|title|score`.
 
@@ -63,9 +63,9 @@ Notes:
 ## Edge, logging, routing, certificates — verified Oct 2026
 - **ingress-nginx retirement**: best-effort maintenance until March 2026, then no releases, bug fixes or security
   fixes; existing installs keep working (kubernetes/ingress-nginx README, kubernetes.io blog 2025-11-11 and
-  2026-01-29). kubemedic raises it from 2026-04-01.
+  2026-01-29). clarikube raises it from 2026-04-01.
 - **IngressNightmare** (CVE-2025-1974, CVSS 9.8, plus CVE-2025-1097/1098/24514/24513): fixed in v1.11.5 and
-  v1.12.1; kubemedic flags versions < 1.11.5 and 1.12.0. The controller image tag carries the version.
+  v1.12.1; clarikube flags versions < 1.11.5 and 1.12.0. The controller image tag carries the version.
 - **ModSecurity in ingress-nginx**: ConfigMap keys `enable-modsecurity`, `enable-owasp-modsecurity-crs`,
   `modsecurity-snippet` (all default off/empty); Ingress annotations `nginx.ingress.kubernetes.io/enable-modsecurity`,
   `enable-owasp-core-rules`, `modsecurity-snippet`. The bundled config uses **DetectionOnly**; blocking needs
@@ -84,7 +84,7 @@ Notes:
 - **cert-manager**: `certificates.cert-manager.io/v1`, `status.notAfter`, `status.renewalTime`, conditions `Ready`,
   `Issuing` (reason `Failed` while renewal fails). Default renewal at 2/3 of the lifetime.
 - ConfigMaps are read only for pods running Fluent Bit / Fluentd / Vector / ingress-nginx / Kong (mounted volumes and
-  `--configmap`), one GET per name, with the optional `kubemedic-config` role.
+  `--configmap`), one GET per name, with the optional `clarikube-config` role.
 
 ## Cluster operations packs — verified Oct 2026 (upstream sources)
 - **Traefik**: CRDs `traefik.io/v1alpha1` (`IngressRoute`, `Middleware`, …; the old `traefik.containo.us` group is gone
@@ -117,7 +117,7 @@ Notes:
   `velero.io/schedule-name`.
 - **Prometheus operator** (`monitoring.coreos.com/v1`): conditions `Available`, `Reconciled`. **Alertmanager
   webhook** payload v4: `alerts[].{status, labels, annotations, startsAt, fingerprint}`; firing alerts are re-sent
-  every `repeat_interval`, so kubemedic keeps the latest state per fingerprint and a 6 h window.
+  every `repeat_interval`, so clarikube keeps the latest state per fingerprint and a 6 h window.
 - **metrics-server** (`metrics.k8s.io/v1beta1` PodMetrics): `containers[].usage.{cpu,memory}` — a short-window
   average, not a peak.
 - **Version skew**: kubelet must not be newer than kube-apiserver and may be up to 3 minor versions older.

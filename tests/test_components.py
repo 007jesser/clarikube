@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from kubemedic import remediation
-from kubemedic.engine import components as C
-from kubemedic.engine import dependencies as D
-from kubemedic.engine import logsig
-from kubemedic.models import RemediationHint, Severity, WorkloadRef
-from kubemedic.service import Kubemedic, NotFound
-from kubemedic.source.base import Snapshot, read_logs
+from clarikube import remediation
+from clarikube.engine import components as C
+from clarikube.engine import dependencies as D
+from clarikube.engine import logsig
+from clarikube.models import RemediationHint, Severity, WorkloadRef
+from clarikube.service import Clarikube, NotFound
+from clarikube.source.base import Snapshot, read_logs
 from tests.conftest import git, make_settings
 
 
@@ -200,7 +200,7 @@ def test_read_logs_never_raises() -> None:
 # ---------------------------------------------------------------- service
 
 
-def test_diagnose_orders_points_at_kafka_without_leaking(kp: Kubemedic) -> None:
+def test_diagnose_orders_points_at_kafka_without_leaking(kp: Clarikube) -> None:
     out = kp.diagnose_workload("shop", "orders")
     assert out["findings"][0]["title"] == "Likely root cause: Kafka data/events is unhealthy"
     assert {d["component"] for d in out["depends_on"]} == {
@@ -216,14 +216,14 @@ def test_diagnose_orders_points_at_kafka_without_leaking(kp: Kubemedic) -> None:
 
 
 def test_logs_are_opt_in(tmp_path: Path, gitops_repo: Path, demo_source) -> None:  # type: ignore[no-untyped-def]
-    kp = Kubemedic(demo_source, make_settings(tmp_path, gitops_repo, read_logs=False))
+    kp = Clarikube(demo_source, make_settings(tmp_path, gitops_repo, read_logs=False))
     out = kp.diagnose_workload("shop", "orders")
     assert out["log_signals"] == []
     # Without logs the dependency is still blamed from component health.
     assert out["findings"][0]["title"].startswith("Likely root cause: ")
 
 
-def test_cluster_health_lists_components(kp: Kubemedic) -> None:
+def test_cluster_health_lists_components(kp: Clarikube) -> None:
     rows = kp.cluster_health()["components"]
     assert rows[0]["component"] == "OpenSearch data/search" and rows[0]["status"] == "down"
     assert {r["component"] for r in rows} >= {"Kafka data/events", "PostgreSQL data/pg"}
@@ -231,7 +231,7 @@ def test_cluster_health_lists_components(kp: Kubemedic) -> None:
     assert kp.cluster_health("shop")["components"] == []
 
 
-def test_list_and_diagnose_component(kp: Kubemedic) -> None:
+def test_list_and_diagnose_component(kp: Clarikube) -> None:
     rows = {r["name"]: r for r in kp.list_components("data")["components"]}
     assert rows["events"]["members"] == "2/3 ready"
     assert rows["events"]["clients"] == ["Deployment/shop/orders"]
@@ -244,7 +244,7 @@ def test_list_and_diagnose_component(kp: Kubemedic) -> None:
         kp.diagnose_component("data", "nope")
 
 
-def test_find_problems_includes_components_and_root_cause(kp: Kubemedic) -> None:
+def test_find_problems_includes_components_and_root_cause(kp: Clarikube) -> None:
     titles = [f["title"] for f in kp.find_problems(min_severity="high")["findings"]]
     assert "Likely root cause: Kafka data/events is unhealthy" in titles
     assert any("JVM heap" in t for t in titles)
@@ -253,7 +253,7 @@ def test_find_problems_includes_components_and_root_cause(kp: Kubemedic) -> None
 # ---------------------------------------------------------------- remediation
 
 
-def test_plan_kafka_min_insync(kp: Kubemedic) -> None:
+def test_plan_kafka_min_insync(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "events")
     assert p["workload"]["kind"] == "Kafka"
     assert not p["blocked"]
@@ -262,20 +262,20 @@ def test_plan_kafka_min_insync(kp: Kubemedic) -> None:
     assert any("min.insync" in a["title"] for a in p["addresses"])
 
 
-def test_plan_opensearch_heap_uses_component_hint(kp: Kubemedic) -> None:
+def test_plan_opensearch_heap_uses_component_hint(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "search")
     assert "+              memory: 2Gi" in p["files"][0]["diff"]
     assert any("JVM heap left unchanged" in n for n in p["notes"])
 
 
-def test_plan_pdb_for_rabbitmq(kp: Kubemedic) -> None:
+def test_plan_pdb_for_rabbitmq(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "queue", ["add-pdb"])
     paths = [f["path"] for f in p["files"]]
     assert paths == ["apps/data/queue-pdb.yaml", "apps/data/kustomization.yaml"]
     assert "maxUnavailable: 1" in p["files"][0]["diff"]
 
 
-def test_plan_service_internal_and_scoped_netpol(kp: Kubemedic) -> None:
+def test_plan_service_internal_and_scoped_netpol(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "queue", ["make-service-internal", "restrict-ingress"])
     diffs = "\n".join(f["diff"] for f in p["files"])
     assert "+  type: ClusterIP" in diffs and "nodePort" in diffs  # nodePort removed
@@ -284,7 +284,7 @@ def test_plan_service_internal_and_scoped_netpol(kp: Kubemedic) -> None:
     assert [f["path"] for f in p["files"]].count("apps/data/kustomization.yaml") <= 1
 
 
-def test_netpol_allows_known_client_namespaces(kp: Kubemedic) -> None:
+def test_netpol_allows_known_client_namespaces(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "events", ["make-service-internal"])
     assert any("not in the GitOps repo" in m for m in p["manual"])  # operator-generated Service
     p2 = kp.plan_remediation("data", "search", ["restrict-ingress"])
@@ -352,7 +352,7 @@ def test_helm_field_edit_without_values_support_is_refused(gitops_repo: Path, sn
 # ---------------------------------------------------------------- verify / revert
 
 
-def test_verify_and_revert_flow(kp: Kubemedic, gitops_repo: Path) -> None:
+def test_verify_and_revert_flow(kp: Clarikube, gitops_repo: Path) -> None:
     p = kp.plan_remediation("data", "queue", ["add-pdb"])
     kp.commit_plan(p["id"], p["approval_token"])
     v = kp.verify_fix(p["id"])
@@ -377,7 +377,7 @@ def test_verify_and_revert_flow(kp: Kubemedic, gitops_repo: Path) -> None:
     assert (gitops_repo / "apps/data/queue-pdb.yaml").exists()  # checkout untouched
 
 
-def test_squash_merge_detected_by_content(kp: Kubemedic, gitops_repo: Path) -> None:
+def test_squash_merge_detected_by_content(kp: Clarikube, gitops_repo: Path) -> None:
     p = kp.plan_remediation("data", "events")
     kp.commit_plan(p["id"], p["approval_token"])
     branch = str(kp.plans.get(p["id"]).branch)  # type: ignore[union-attr]
@@ -386,13 +386,13 @@ def test_squash_merge_detected_by_content(kp: Kubemedic, gitops_repo: Path) -> N
     assert kp.verify_fix(p["id"])["merge"]["state"] == "merged"
 
 
-def test_revert_requires_committed_plan(kp: Kubemedic) -> None:
+def test_revert_requires_committed_plan(kp: Clarikube) -> None:
     p = kp.plan_remediation("data", "events")
     with pytest.raises(ValueError, match="only committed plans"):
         kp.plan_revert(p["id"])
 
 
-def test_external_service_is_a_security_signal(kp: Kubemedic) -> None:
+def test_external_service_is_a_security_signal(kp: Clarikube) -> None:
     inc = kp.investigate_security("data", "search")["incident"]
     assert any("reachable from outside the cluster via search (LoadBalancer)" in s for s in inc["signals"])
 
@@ -403,7 +403,7 @@ import shutil  # noqa: E402
 
 import yaml  # noqa: E402
 
-from kubemedic.source.fixture import FixtureSource  # noqa: E402
+from clarikube.source.fixture import FixtureSource  # noqa: E402
 
 
 def _fixture(tmp_path: Path, docs: list[dict[str, object]]) -> Snapshot:
@@ -611,13 +611,13 @@ def test_operator_busy_vs_failed(tmp_path: Path) -> None:
 
 
 def test_node_pool_memory_fix_edits_the_pool(tmp_path: Path, gitops_repo: Path) -> None:
-    from kubemedic import demo
+    from clarikube import demo
 
     fx = tmp_path / "cluster"
     shutil.copytree(demo.CLUSTER, fx)
     f = fx / "data-components.yaml"
     f.write_text(f.read_text().replace("jvmOptions: {-Xms: 1024m, -Xmx: 1024m}", "jvmOptions: {-Xms: 2g, -Xmx: 2g}"))
-    kp = Kubemedic(FixtureSource(fx), make_settings(tmp_path, gitops_repo))
+    kp = Clarikube(FixtureSource(fx), make_settings(tmp_path, gitops_repo))
     p = kp.plan_remediation("data", "events", ["set-memory-limit"])
     assert [x["path"] for x in p["files"]] == ["apps/data/kafka.yaml"]
     d = p["files"][0]["diff"]
@@ -625,7 +625,7 @@ def test_node_pool_memory_fix_edits_the_pool(tmp_path: Path, gitops_repo: Path) 
     assert d.index("+      memory: 3Gi") > d.index("kind: KafkaNodePool") if "kind: KafkaNodePool" in d else True
 
 
-def test_list_plans_reports_merge_state(kp: Kubemedic, gitops_repo: Path) -> None:
+def test_list_plans_reports_merge_state(kp: Clarikube, gitops_repo: Path) -> None:
     p = kp.plan_remediation("data", "queue", ["add-pdb"])
     kp.commit_plan(p["id"], p["approval_token"])
     row = next(r for r in kp.list_plans()["plans"] if r["id"] == p["id"])
@@ -635,7 +635,7 @@ def test_list_plans_reports_merge_state(kp: Kubemedic, gitops_repo: Path) -> Non
     assert row["merge"] == "merged"
 
 
-def test_verify_fix_separates_new_from_preexisting(kp: Kubemedic, gitops_repo: Path) -> None:
+def test_verify_fix_separates_new_from_preexisting(kp: Clarikube, gitops_repo: Path) -> None:
     p = kp.plan_remediation("data", "queue", ["add-pdb"])
     kp.commit_plan(p["id"], p["approval_token"])
     git(gitops_repo, "merge", "-q", "--ff-only", str(kp.plans.get(p["id"]).branch))  # type: ignore[union-attr]

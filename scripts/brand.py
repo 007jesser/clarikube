@@ -1,9 +1,9 @@
 """Set the GitHub owner and (optionally) rename the project before the first public release.
 
     python scripts/brand.py --owner jessersallemi                 # replace OWNER placeholders
-    python scripts/brand.py --owner jessersallemi --name kubemedic  # also rename kubepilot -> kubemedic
+    python scripts/brand.py --owner jessersallemi --name clarikube  # also rename clarikube -> clarikube
 
-Renames the Python package, CLI, env var prefix (KUBEPILOT_ -> KUBEMEDIC_), labels/annotations/branch
+Renames the Python package, CLI, env var prefix (KUBEPILOT_ -> CLARIKUBE_), labels/annotations/branch
 prefixes and docs. Run the test suite afterwards. Only touches files tracked by git.
 """
 
@@ -41,14 +41,14 @@ def main() -> int:
             continue
         new = text.replace("OWNER/", f"{args.owner}/").replace("ghcr.io/OWNER", f"ghcr.io/{args.owner}")
         if name and module:
-            new = new.replace("KubePilot", "".join(p.capitalize() for p in name.split("-")))
+            new = new.replace("Clarikube", "".join(p.capitalize() for p in name.split("-")))
             new = new.replace("KUBEPILOT", module.upper())
-            new = re.sub(r"(?<![\w-])kubepilot(?=\.cli|\.service|\.|\s+import|_)", module, new)  # python modules
-            new = new.replace("kubepilot", name)
+            new = re.sub(r"(?<![\w-])clarikube(?=\.cli|\.service|\.|\s+import|_)", module, new)  # python modules
+            new = new.replace("clarikube", name)
         if new != text:
             f.write_text(new)
     if module:
-        src = ROOT / "src" / "kubepilot"
+        src = ROOT / "src" / "clarikube"
         if src.exists():
             subprocess.run(["git", "-C", str(ROOT), "mv", str(src), str(ROOT / "src" / module)], check=True)
     print("done; now run: uv lock && make check")

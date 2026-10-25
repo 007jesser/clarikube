@@ -15,7 +15,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -q
       - name: Tag matches package version
-        run: test "v$(uv run python -c 'import importlib.metadata as m; print(m.version("kubemedic"))')" = "$GITHUB_REF_NAME"
+        run: test "v$(uv run python -c 'import importlib.metadata as m; print(m.version("clarikube"))')" = "$GITHUB_REF_NAME"
       - name: server.json matches package version
         run: python3 -c "import json,tomllib;v=tomllib.load(open('pyproject.toml','rb'))['project']['version'];d=json.load(open('server.json'));assert d['version']==v==d['packages'][0]['version'],(v,d['version'])"
       - run: uv build
@@ -48,10 +48,10 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/kubemedic:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/kubemedic:latest
+            ghcr.io/${{ github.repository_owner }}/clarikube:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/clarikube:latest
   mcp-registry:
-    # Listed on registry.modelcontextprotocol.io as io.github.007jesser/kubemedic (needs the PyPI package first).
+    # Listed on registry.modelcontextprotocol.io as io.github.007jesser/clarikube (needs the PyPI package first).
     needs: pypi
     runs-on: ubuntu-latest
     permissions:
@@ -63,6 +63,6 @@ jobs:
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
       - name: Wait for PyPI to serve the new version
-        run: for i in $(seq 1 30); do curl -sf "https://pypi.org/pypi/kubemedic/${GITHUB_REF_NAME#v}/json" >/dev/null && exit 0; sleep 10; done; exit 1
+        run: for i in $(seq 1 30); do curl -sf "https://pypi.org/pypi/clarikube/${GITHUB_REF_NAME#v}/json" >/dev/null && exit 0; sleep 10; done; exit 1
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish

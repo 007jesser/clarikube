@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Installs Falco + Falcosidekick, Trivy Operator and the lab workloads into the current kube-context.
 # Shared by k3s-install.sh (single machine) and up.sh (kind). Idempotent: safe to re-run.
-#   INGEST_URL   where Falcosidekick posts alerts (kubemedic ingest), required
+#   INGEST_URL   where Falcosidekick posts alerts (clarikube ingest), required
 #   LOW_MEM=1    tighter resources for 4 GB machines
 #   FALCO_DRIVER modern_ebpf (default) | kmod | ebpf
 set -euo pipefail
 export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
 : "${INGEST_URL:?set INGEST_URL, e.g. http://<host-ip>:2801/falco}"
-LAB_REPO=${LAB_REPO:-$HOME/kubemedic-lab-gitops}
-STATE=${KUBEMEDIC_STATE_DIR:-$HOME/.local/state/kubemedic}
+LAB_REPO=${LAB_REPO:-$HOME/clarikube-lab-gitops}
+STATE=${CLARIKUBE_STATE_DIR:-$HOME/.local/state/clarikube}
 mkdir -p "$STATE"
 TOKEN_FILE="$STATE/ingest-token"
 [[ -s "$TOKEN_FILE" ]] || { head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$TOKEN_FILE"; chmod 600 "$TOKEN_FILE"; }

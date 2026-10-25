@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from kubemedic import demo
-from kubemedic.config import Settings
-from kubemedic.service import Kubemedic
-from kubemedic.source.base import Snapshot
-from kubemedic.source.fixture import FixtureSource
+from clarikube import demo
+from clarikube.config import Settings
+from clarikube.service import Clarikube
+from clarikube.source.base import Snapshot
+from clarikube.source.fixture import FixtureSource
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,5 +67,5 @@ def make_settings(tmp_path: Path, repo: Path | None, **over: object) -> Settings
 
 
 @pytest.fixture
-def kp(tmp_path: Path, gitops_repo: Path, demo_source: FixtureSource) -> Kubemedic:
-    return Kubemedic(demo_source, make_settings(tmp_path, gitops_repo))
+def kp(tmp_path: Path, gitops_repo: Path, demo_source: FixtureSource) -> Clarikube:
+    return Clarikube(demo_source, make_settings(tmp_path, gitops_repo))

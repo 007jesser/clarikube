@@ -1,6 +1,6 @@
-# Testing kubemedic on a single machine
+# Testing clarikube on a single machine
 
-Goal: prove every kubemedic feature against a **real** cluster, with automated PASS/FAIL checks, in about an hour.
+Goal: prove every clarikube feature against a **real** cluster, with automated PASS/FAIL checks, in about an hour.
 
 ```
 Phase 0  install        k3s + Falco + Trivy + lab workloads            make lab-k3s
@@ -25,17 +25,17 @@ Requirements: Ubuntu 22.04 or 24.04 (kernel ≥ 5.8 with BTF; Falco's modern eBP
 
 ```bash
 sudo apt-get update && sudo apt-get install -y git make unzip
-# copy kubemedic.zip to the machine (scp, USB, ...) then:
-unzip kubemedic.zip && cd kubemedic
+# copy clarikube.zip to the machine (scp, USB, ...) then:
+unzip clarikube.zip && cd clarikube
 make lab-k3s
 ```
 
-What it does: installs k3s (single node, Traefik off), links k3s's containerd socket so Falco can name pods, installs Helm and uv, deploys Falco + Falcosidekick (alerts → `http://<node-ip>:2801/falco`, bearer token in `~/.local/state/kubemedic/ingest-token`), Trivy Operator, and the lab workloads from `lab/gitops/` (copied to the git repo `~/kubemedic-lab-gitops`).
+What it does: installs k3s (single node, Traefik off), links k3s's containerd socket so Falco can name pods, installs Helm and uv, deploys Falco + Falcosidekick (alerts → `http://<node-ip>:2801/falco`, bearer token in `~/.local/state/clarikube/ingest-token`), Trivy Operator, and the lab workloads from `lab/gitops/` (copied to the git repo `~/clarikube-lab-gitops`).
 
 Then open a **second terminal** and leave this running:
 
 ```bash
-cd kubemedic && make lab-ingest
+cd clarikube && make lab-ingest
 ```
 
 Wait until everything is up (Falco 1–3 min; Trivy scans every image once, 5–15 min):
@@ -85,13 +85,13 @@ Expected: Falco alerts mapped to `Deployment/shop/payment-api`; severity high/cr
 
 ### Connect an MCP client (recommended: Claude Code on the lab machine)
 
-kubemedic is a local stdio MCP server, so the client must run where it can start it. Simplest and verified:
+clarikube is a local stdio MCP server, so the client must run where it can start it. Simplest and verified:
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash && source ~/.bashrc
-claude mcp add --scope user kubemedic -- ~/kubemedic/lab/mcp.sh
-claude mcp list            # kubemedic ... ✔ Connected
-cd ~ && claude             # then /mcp should list 10 kubemedic tools
+claude mcp add --scope user clarikube -- ~/clarikube/lab/mcp.sh
+claude mcp list            # clarikube ... ✔ Connected
+cd ~ && claude             # then /mcp should list 10 clarikube tools
 ```
 
 `--scope user` matters: without it the server is only registered for the folder you ran `claude mcp add` in.
@@ -100,35 +100,35 @@ cd ~ && claude             # then /mcp should list 10 kubemedic tools
 Desktop app's local MCP config (Settings → Developer → Edit Config):
 
 ```json
-{ "mcpServers": { "kubemedic-lab": { "command": "ssh", "args": ["-T", "user@LAB_IP", "~/kubemedic/lab/mcp.sh"] } } }
+{ "mcpServers": { "clarikube-lab": { "command": "ssh", "args": ["-T", "user@LAB_IP", "~/clarikube/lab/mcp.sh"] } } }
 ```
 
 Only clients that launch **local** MCP servers can use it; cloud-hosted chat sessions cannot reach your lab.
-Server logs: `~/.local/state/kubemedic/mcp.log` on the lab machine.
+Server logs: `~/.local/state/clarikube/mcp.log` on the lab machine.
 
 ### Script to follow in the chat
 
 1. *"Triage the cluster."* It should list the 4 reliability issues plus payment-api as the top incident.
-2. *"Why is checkout failing? Prepare a fix."* Expect a plan restoring `memory: 512Mi` with a one-line diff. Approve it in chat; it commits branch `kubemedic/checkout-…`. Plans expire after 30 minutes; if you approve later, kubemedic refuses and you simply ask for a new plan.
+2. *"Why is checkout failing? Prepare a fix."* Expect a plan restoring `memory: 512Mi` with a one-line diff. Approve it in chat; it commits branch `clarikube/checkout-…`. Plans expire after 30 minutes; if you approve later, clarikube refuses and you simply ask for a new plan.
 3. *"Fix frontend too."* Expect a plan reverting the image to `nginx:1.27`.
 4. *"Treat payment-api as an incident."* Expect the containment plan (`isolate-workload`) plus the manual steps (rebuild image, reduce RBAC, rotate credentials).
 5. Merge and apply each branch (this plays the role of Argo CD):
 
 ```bash
-git -C ~/kubemedic-lab-gitops branch          # list kubemedic/* branches
-make lab-fix BRANCH=kubemedic/checkout-<id>    # use the real names; run one at a time and type y
-make lab-fix BRANCH=kubemedic/frontend-<id>
+git -C ~/clarikube-lab-gitops branch          # list clarikube/* branches
+make lab-fix BRANCH=clarikube/checkout-<id>    # use the real names; run one at a time and type y
+make lab-fix BRANCH=clarikube/frontend-<id>
 sleep 60 && make lab-verify PHASE=fixed
 ```
 
-**Expected lesson:** if you merge the default *security hardening* plan for payment-api, the pod fails with `CreateContainerConfigError` because `nginx:1.19.0` runs as root and the plan set `runAsNonRoot: true`. kubemedic's reviewer note warns about exactly this. That's why fixes are PRs and not direct applies. Undo with `git revert` (the command is printed by `lab-fix`).
+**Expected lesson:** if you merge the default *security hardening* plan for payment-api, the pod fails with `CreateContainerConfigError` because `nginx:1.19.0` runs as root and the plan set `runAsNonRoot: true`. clarikube's reviewer note warns about exactly this. That's why fixes are PRs and not direct applies. Undo with `git revert` (the command is printed by `lab-fix`).
 
 ### Approval-mode test (optional)
-Set `KUBEMEDIC_APPROVAL_MODE=cli` in `lab/mcp.sh`; `commit_plan` should then refuse until you run `make lab-approve ID=<plan-id>` on the lab machine.
+Set `CLARIKUBE_APPROVAL_MODE=cli` in `lab/mcp.sh`; `commit_plan` should then refuse until you run `make lab-approve ID=<plan-id>` on the lab machine.
 
 ## 5a. What lights up on a plain k3s
 
-k3s ships Traefik, metrics-server, CoreDNS and the local-path StorageClass, so even without extra installs kubemedic
+k3s ships Traefik, metrics-server, CoreDNS and the local-path StorageClass, so even without extra installs clarikube
 checks them: CoreDNS replicas, Traefik routes (IngressRoute → missing Service/Middleware), LoadBalancers without an
 address (ServiceLB), memory near limits (metrics-server). Ask: "What platform issues does the cluster have?"
 
@@ -144,7 +144,7 @@ make lab-data                 # commits lab/gitops-data into the lab repo and ap
 make lab-verify PHASE=data    # after ~3 minutes
 ```
 
-In `lab/mcp.sh` set `KUBEMEDIC_READ_LOGS=true` (your kubeconfig can read logs), then ask:
+In `lab/mcp.sh` set `CLARIKUBE_READ_LOGS=true` (your kubeconfig can read logs), then ask:
 - "What data systems run in the cluster and what's wrong with them?"
 - "Why does shop/reports keep crashing?" → should blame OpenSearch (heap = limit → OOMKilled).
 - "Fix the Redis exposure" → `make-service-internal` diff on `data/redis.yaml`.
@@ -172,12 +172,12 @@ make lab-reset                                   # baseline workloads, new lab r
 | Falco pod CrashLoop, "modern_ebpf" errors | Kernel lacks BTF. `FALCO_DRIVER=kmod ./lab/stack.sh` (needs kernel headers: `sudo apt install linux-headers-$(uname -r)`). |
 | <a id="falco"></a>Alerts arrive but `PHASE=attacked` says not mapped to the workload | Alerts lack `k8s.pod.name`, so Falco can't see containerd. Check `ls -l /run/containerd/containerd.sock` → must point to `/run/k3s/containerd/containerd.sock`; then `kubectl -n falco rollout restart ds/falco`. Check `kubectl -n falco logs ds/falco` for container-engine errors. |
 | `lab-ingest` logs `401 Unauthorized` | Falcosidekick isn't sending the token. Check `kubectl -n falco get secret falco-falcosidekick -o go-template='{{.data.WEBHOOK_CUSTOMHEADERS \| base64decode}}'` shows `Authorization:Bearer ...`; the chart key is `webhook.customHeaders` (camelCase). Keep `make lab-ingest` running: alerts sent while it is stopped are lost. |
-| No alerts at all in `lab-ingest` | `kubectl -n falco logs deploy/falco-falcosidekick` shows webhook errors? Check the URL/IP, `sudo ufw allow from 10.42.0.0/16 to any port 2801`, and that `make lab-ingest` runs. Test: `curl -XPOST -H "Authorization: Bearer $(cat ~/.local/state/kubemedic/ingest-token)" -d '{"rule":"test","priority":"Notice","output_fields":{"k8s.ns.name":"shop","k8s.pod.name":"x"}}' http://<node-ip>:2801/falco` |
+| No alerts at all in `lab-ingest` | `kubectl -n falco logs deploy/falco-falcosidekick` shows webhook errors? Check the URL/IP, `sudo ufw allow from 10.42.0.0/16 to any port 2801`, and that `make lab-ingest` runs. Test: `curl -XPOST -H "Authorization: Bearer $(cat ~/.local/state/clarikube/ingest-token)" -d '{"rule":"test","priority":"Notice","output_fields":{"k8s.ns.name":"shop","k8s.pod.name":"x"}}' http://<node-ip>:2801/falco` |
 | "Terminal shell in container" missing | Run `lab/attack.sh` from a real terminal (needs `-t`). Falco rule names/priorities change between releases; check `kubectl -n falco logs ds/falco`. |
 | Trivy scan pods stuck in `Init:0/1` and keep restarting | Each job downloads the vulnerability DB and times out. `lab/stack.sh` enables the built-in Trivy server (one download); on an existing install: `helm upgrade trivy-operator aqua/trivy-operator -n trivy-system --reuse-values --set operator.builtInTrivyServer=true --set operator.scanJobTimeout=15m --set operator.scanJobsConcurrentLimit=3` |
 | `CVEs from Trivy` stays WARN | `kubectl -n trivy-system logs deploy/trivy-operator`; scans need internet to pull the vulnerability DB. LOW_MEM mode scans one image at a time. |
 | `checkout` OOM not correlated with rollout | `kubectl -n shop get rs` must show two checkout ReplicaSets (revision 1 and 2). If you re-applied the baseline, run `make lab-reset` then `make lab-break` again. |
-| Claude Desktop can't start the server | Run `ssh -T user@LAB_IP ~/kubemedic/lab/mcp.sh` manually: it must wait silently (no password prompt, no output). Check `~/.local/state/kubemedic/mcp.log`. |
+| Claude Desktop can't start the server | Run `ssh -T user@LAB_IP ~/clarikube/lab/mcp.sh` manually: it must wait silently (no password prompt, no output). Check `~/.local/state/clarikube/mcp.log`. |
 | A Helm `--set` value is rejected | Charts evolve; compare with `helm show values falcosecurity/falco` / `aqua/trivy-operator` and adjust `lab/stack.sh`. |
 
 ## What to send back

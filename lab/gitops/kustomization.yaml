@@ -1,5 +1,5 @@
 # Lab GitOps repo: the single source of truth for the test workloads.
-# stack.sh copies this into ~/kubemedic-lab-gitops (a git repo) and applies it with `kubectl apply -k`.
+# stack.sh copies this into ~/clarikube-lab-gitops (a git repo) and applies it with `kubectl apply -k`.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

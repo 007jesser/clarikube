@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from kubemedic.report import ReportMeta, build_report, render_html
-from kubemedic.service import Kubemedic
+from clarikube.report import ReportMeta, build_report, render_html
+from clarikube.service import Clarikube
 
 
 def _meta() -> ReportMeta:
@@ -14,7 +14,7 @@ def _meta() -> ReportMeta:
     )
 
 
-def test_report_structure_and_grade(kp: Kubemedic) -> None:
+def test_report_structure_and_grade(kp: Clarikube) -> None:
     rep = build_report(kp, _meta())
     assert set(rep) >= {"grade", "sev_counts", "top_risks", "incidents", "findings", "platform_issues", "components"}
     # the demo cluster has critical issues, so the grade is the worst band
@@ -27,7 +27,7 @@ def test_report_structure_and_grade(kp: Kubemedic) -> None:
     assert all(r["severity"] in ("critical", "high") for r in rep["top_risks"])
 
 
-def test_report_html_renders_and_is_self_contained(kp: Kubemedic) -> None:
+def test_report_html_renders_and_is_self_contained(kp: Clarikube) -> None:
     rep = build_report(kp, _meta())
     out = render_html(rep)
     assert out.startswith("<!doctype html>")
@@ -38,13 +38,13 @@ def test_report_html_renders_and_is_self_contained(kp: Kubemedic) -> None:
     assert 'class="grade g-E"' in out
 
 
-def test_report_never_leaks_config_values(kp: Kubemedic) -> None:
+def test_report_never_leaks_config_values(kp: Clarikube) -> None:
     rep = build_report(kp, _meta())
     blob = json.dumps({k: v for k, v in rep.items() if k != "meta"}, default=str) + render_html(rep)
     assert "DEMO-not-a-real-password" not in blob  # config/env values are names-only everywhere
 
 
-def test_report_html_escapes_client_name(kp: Kubemedic) -> None:
+def test_report_html_escapes_client_name(kp: Clarikube) -> None:
     m = _meta()
     m.client = "<script>alert(1)</script> Ltd"
     out = render_html(build_report(kp, m))

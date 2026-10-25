@@ -3,7 +3,7 @@
 # Needs ~1.5 GB extra RAM and pulls ~1 GB of images (OpenSearch is the big one). SKIP_SEARCH=1 to leave it out.
 set -euo pipefail
 export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
-LAB_REPO=${LAB_REPO:-$HOME/kubemedic-lab-gitops}
+LAB_REPO=${LAB_REPO:-$HOME/clarikube-lab-gitops}
 [[ -d "$LAB_REPO/.git" ]] || { echo "run make lab-k3s (or lab-kind) first"; exit 1; }
 mkdir -p "$LAB_REPO/data"
 cp lab/gitops-data/*.yaml "$LAB_REPO/data/"
@@ -20,5 +20,5 @@ Data tier applied. Give it ~3 minutes (image pulls, OpenSearch OOM restarts), th
   make lab-verify PHASE=data
 Ask your MCP client: "What data systems run in the cluster and what is wrong with them?"
                      "Why does shop/reports keep crashing?"
-Logs: set KUBEMEDIC_READ_LOGS=true for kubemedic to read failing containers' log signatures.
+Logs: set CLARIKUBE_READ_LOGS=true for clarikube to read failing containers' log signatures.
 MSG

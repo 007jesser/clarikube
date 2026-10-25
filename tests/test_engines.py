@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from kubemedic.engine import diagnose, rbac, security
-from kubemedic.engine.allowlist import Allowlist
-from kubemedic.models import BindingInfo, PolicyRule, RoleInfo, Severity, Subject, WorkloadRef
+from clarikube.engine import diagnose, rbac, security
+from clarikube.engine.allowlist import Allowlist
+from clarikube.models import BindingInfo, PolicyRule, RoleInfo, Severity, Subject, WorkloadRef
 from tests.conftest import ALLOWLIST
 
 

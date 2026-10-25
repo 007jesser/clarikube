@@ -6,10 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from kubemedic import normalize, quantity
-from kubemedic.engine import selectors
-from kubemedic.models import LabelSelector, NetworkPolicyInfo, Pod, Severity, WorkloadRef
-from kubemedic.sanitize import INJECTION_MARK, clean, k8s_name
+from clarikube import normalize, quantity
+from clarikube.engine import selectors
+from clarikube.models import LabelSelector, NetworkPolicyInfo, Pod, Severity, WorkloadRef
+from clarikube.sanitize import INJECTION_MARK, clean, k8s_name
 
 # ---------------------------------------------------------------- quantity
 

@@ -1,24 +1,24 @@
-# Minimal READ-ONLY access for kubemedic.
+# Minimal READ-ONLY access for clarikube.
 # - no Secrets, no pods/exec, no write verbs anywhere; pods/log and configmaps only in optional roles below
 # - RBAC objects are listed only to compute ServiceAccount exposure
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kubemedic
+  name: clarikube
   labels:
     pod-security.kubernetes.io/enforce: restricted
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kubemedic
-  namespace: kubemedic
+  name: clarikube
+  namespace: clarikube
 automountServiceAccountToken: true
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubemedic-readonly
+  name: clarikube-readonly
 rules:
   - apiGroups: [""]
     resources: [pods, events, nodes, namespaces, services, serviceaccounts, persistentvolumeclaims]
@@ -88,7 +88,7 @@ rules:
     resources: [kongplugins, kongclusterplugins]
     verbs: [get, list, watch]
   # Status of platform tools, read only if installed. NOTE: ExternalSecret/SealedSecret objects hold references
-  # and encrypted blobs, never plaintext secret values; kubemedic reads only their status and target names.
+  # and encrypted blobs, never plaintext secret values; clarikube reads only their status and target names.
   - apiGroups: [traefik.io]
     resources: [ingressroutes, middlewares]
     verbs: [get, list, watch]
@@ -132,22 +132,22 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubemedic-readonly
+  name: clarikube-readonly
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubemedic-readonly
+  name: clarikube-readonly
 subjects:
   - kind: ServiceAccount
-    name: kubemedic
-    namespace: kubemedic
+    name: clarikube
+    namespace: clarikube
 ---
-# OPTIONAL: lets kubemedic read the last lines of failing containers' logs (KUBEMEDIC_READ_LOGS=true).
-# Logs are untrusted input: kubemedic only extracts known error signatures and sanitizes them.
+# OPTIONAL: lets clarikube read the last lines of failing containers' logs (CLARIKUBE_READ_LOGS=true).
+# Logs are untrusted input: clarikube only extracts known error signatures and sanitizes them.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubemedic-logs
+  name: clarikube-logs
 rules:
   - apiGroups: [""]
     resources: [pods/log]
@@ -156,23 +156,23 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubemedic-logs
+  name: clarikube-logs
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubemedic-logs
+  name: clarikube-logs
 subjects:
   - kind: ServiceAccount
-    name: kubemedic
-    namespace: kubemedic
+    name: clarikube
+    namespace: clarikube
 ---
-# OPTIONAL: lets kubemedic read the ConfigMaps of the platform components it checks (Fluent Bit outputs and
-# buffers, ingress-nginx/ModSecurity settings). kubemedic only GETs ConfigMaps mounted by those pods, parses
+# OPTIONAL: lets clarikube read the ConfigMaps of the platform components it checks (Fluent Bit outputs and
+# buffers, ingress-nginx/ModSecurity settings). clarikube only GETs ConfigMaps mounted by those pods, parses
 # them in memory and never returns their contents (they can embed credentials).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kubemedic-config
+  name: clarikube-config
 rules:
   - apiGroups: [""]
     resources: [configmaps]
@@ -181,12 +181,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kubemedic-config
+  name: clarikube-config
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kubemedic-config
+  name: clarikube-config
 subjects:
   - kind: ServiceAccount
-    name: kubemedic
-    namespace: kubemedic
+    name: clarikube
+    namespace: clarikube

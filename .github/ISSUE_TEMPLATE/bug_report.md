@@ -1,12 +1,12 @@
 ---
 name: Bug or misdiagnosis
-about: kubemedic crashed, missed a problem, or blamed the wrong cause
+about: clarikube crashed, missed a problem, or blamed the wrong cause
 ---
 
-**What happened / what kubemedic said**
+**What happened / what clarikube said**
 
 **What was actually wrong**
 
 **Environment** (Kubernetes distro + version, Falco/Trivy versions, MCP client, model)
 
-**Capture** (optional): output of `kubemedic capture` for the affected namespace. Review it for sensitive data first.
+**Capture** (optional): output of `clarikube capture` for the affected namespace. Review it for sensitive data first.

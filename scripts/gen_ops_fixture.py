@@ -1,4 +1,4 @@
-"""Generates src/kubemedic/demo/cluster/ops.yaml: cluster services and operations tooling with realistic failures."""
+"""Generates src/clarikube/demo/cluster/ops.yaml: cluster services and operations tooling with realistic failures."""
 
 import sys
 
