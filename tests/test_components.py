@@ -633,3 +633,14 @@ def test_list_plans_reports_merge_state(kp: KubePilot, gitops_repo: Path) -> Non
     git(gitops_repo, "merge", "-q", "--ff-only", str(row["branch"]))
     row = next(r for r in kp.list_plans()["plans"] if r["id"] == p["id"])
     assert row["merge"] == "merged"
+
+
+def test_verify_fix_separates_new_from_preexisting(kp: KubePilot, gitops_repo: Path) -> None:
+    p = kp.plan_remediation("data", "queue", ["add-pdb"])
+    kp.commit_plan(p["id"], p["approval_token"])
+    git(gitops_repo, "merge", "-q", "--ff-only", str(kp.plans.get(p["id"]).branch))  # type: ignore[union-attr]
+    v = kp.verify_fix(p["id"])
+    assert v["new_findings"] == []  # the admin-port exposure existed before: not "new"
+    titles = [x["title"] for x in v["still_open_not_targeted"]]
+    assert any("admin/cluster port is exposed" in t for t in titles)
+    assert len(titles) == len(set(titles))  # no duplicates

@@ -126,6 +126,13 @@ def _area(f: Finding) -> str:
 _MULTI_KINDS = {"set-fluentbit-option"}  # several independent edits of the same kind can apply at once
 
 
+def _unique(findings: list[Finding]) -> list[Finding]:
+    seen: dict[str, Finding] = {}
+    for f in findings:
+        seen.setdefault(f.id, f)
+    return list(seen.values())
+
+
 def _hint_key(h: RemediationHint) -> str:
     return f"{h.kind}:{h.params.get('key', '')}" if h.kind in _MULTI_KINDS else h.kind
 
@@ -598,6 +605,7 @@ class KubePilot:
             result,
             evidence or "operator request",
             addresses=[{"id": f.id, "title": clean(f.title, 200)} for f in addressed.values()],
+            baseline=sorted({f.id for f in findings}),
         )
         return self._plan_out(store, plan, token, sorted({h.kind for h in hints.values()}))
 
@@ -667,10 +675,21 @@ class KubePilot:
             "merge": merged,
             "resolved": gone,
             "still_present": still,
+            # Only issues that did not exist when the plan was made; pre-existing ones are listed separately.
             "new_findings": [
                 {"severity": f.severity.label, "title": clean(f.title, 200)}
-                for f in current
-                if f.severity >= Severity.HIGH and f.id not in {a["id"] for a in plan.addresses}
+                for f in _unique(current)
+                if f.severity >= Severity.HIGH
+                and f.id not in {a["id"] for a in plan.addresses}
+                and (plan.baseline is None or f.id not in set(plan.baseline))
+            ][:10],
+            "still_open_not_targeted": [
+                {"severity": f.severity.label, "title": clean(f.title, 200)}
+                for f in _unique(current)
+                if f.severity >= Severity.HIGH
+                and plan.baseline is not None
+                and f.id in set(plan.baseline)
+                and f.id not in {a["id"] for a in plan.addresses}
             ][:10],
             "gitops_applications": apps[:10],
             "next": hint,

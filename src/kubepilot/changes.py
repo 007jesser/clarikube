@@ -81,6 +81,7 @@ class ChangePlan(BaseModel):
     evidence_summary: str
     token_sha: str
     addresses: list[dict[str, str]] = Field(default_factory=list)  # findings this plan is meant to fix
+    baseline: list[str] | None = None  # ids of all findings present when planned (None: older plan)
     reverts: str | None = None  # plan id this plan undoes
     status: Literal["pending", "committed", "rejected", "expired"] = "pending"
     branch: str | None = None
@@ -156,6 +157,7 @@ class PlanStore:
         now: datetime | None = None,
         addresses: list[dict[str, str]] | None = None,
         reverts: str | None = None,
+        baseline: list[str] | None = None,
     ) -> tuple[ChangePlan, str]:
         now = now or datetime.now(UTC)
         head = git(self.repo, "rev-parse", "HEAD")
@@ -181,6 +183,7 @@ class PlanStore:
             token_sha=_sha(token),
             addresses=addresses or [],
             reverts=reverts,
+            baseline=baseline,
         )
         self.save(plan)
         self.audit(
