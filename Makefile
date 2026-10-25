@@ -84,6 +84,9 @@ lab-mcp:            ## MCP server over stdio wired to the lab (what Claude Deskt
 lab-report:         ## launch report: findings, speed, token savings vs raw kubectl + redacted fixture
 	$(LAB_ENV) KUBEMEDIC_READ_LOGS=true uv run python lab/report.py
 
+lab-readonly:       ## run kubemedic with the read-only ServiceAccount from deploy/rbac.yaml (proves least privilege)
+	./lab/readonly.sh
+
 lab-capture:        ## save the live lab as a fixture (turn real bugs into tests)
 	uv run kubemedic capture --out examples/lab-capture-$$(date +%Y%m%d-%H%M)
 
