@@ -90,5 +90,10 @@ lab-readonly:       ## run kubemedic with the read-only ServiceAccount from depl
 lab-capture:        ## save the live lab as a fixture (turn real bugs into tests)
 	uv run kubemedic capture --out examples/lab-capture-$$(date +%Y%m%d-%H%M)
 
+sample-report:      ## regenerate docs/sample-report.{html,pdf} from the demo cluster
+	KUBEMEDIC_SOURCE=fixture uv run kubemedic report --client "ACME GmbH (demo)" \
+	  --by "kubemedic" --contact "you@example.com" --cluster "demo cluster" \
+	  --out docs/sample-report.html --pdf
+
 image:
 	docker build -t kubemedic:dev .

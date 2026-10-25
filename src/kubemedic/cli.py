@@ -320,6 +320,39 @@ def cmd_capture(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Generate a client-facing health & security report (HTML, and PDF with --pdf)."""
+    from kubemedic.report import ReportMeta, build_report, render_html, to_pdf
+
+    kp = _service()
+    meta = ReportMeta(
+        client=args.client,
+        cluster=args.cluster or Settings.from_env().kube_context or "current context",
+        prepared_by=args.by,
+        contact=args.contact,
+        source="fixture" if Settings.from_env().source == "fixture" else "live cluster",
+    )
+    rep = build_report(kp, meta)
+    out = Path(args.out)
+    out.write_text(render_html(rep))
+    msg = f"Wrote {out}"
+    if args.pdf:
+        pdf = out.with_suffix(".pdf")
+        tool = to_pdf(out, pdf)
+        msg += f" and {pdf} (via {tool})" if tool else (
+            f"\nNo PDF converter found (install wkhtmltopdf or Chromium). "
+            f"Open {out} in a browser and Print → Save as PDF."
+        )
+    sc = rep["sev_counts"]
+    print(msg)
+    print(
+        f"Grade {rep['grade']}: {rep['grade_note']}. "
+        f"{sc.get('critical', 0)} critical, {sc.get('high', 0)} high, {sc.get('medium', 0)} medium; "
+        f"{len(rep['incidents'])} security incident(s)."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
     p = argparse.ArgumentParser(prog="kubemedic", description=__doc__)
@@ -383,6 +416,15 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--out", required=True)
     s.add_argument("-n", "--namespace")
     s.set_defaults(fn=cmd_capture)
+
+    s = sub.add_parser("report", help="generate a client-facing health & security report (HTML/PDF)")
+    s.add_argument("--client", required=True, help="client or organisation name")
+    s.add_argument("--out", default="kubemedic-report.html", help="output HTML path")
+    s.add_argument("--pdf", action="store_true", help="also write a PDF (needs wkhtmltopdf or Chromium)")
+    s.add_argument("--cluster", help="cluster label shown on the report (default: kube-context)")
+    s.add_argument("--by", default="", help="your name / company, shown as 'Prepared by'")
+    s.add_argument("--contact", default="", help="your email or site, shown under 'Prepared by'")
+    s.set_defaults(fn=cmd_report)
 
     args = p.parse_args(argv)
     try:

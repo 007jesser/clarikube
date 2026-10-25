@@ -256,6 +256,7 @@ Prompts: `triage_cluster`, `fix_workload`, `incident_response`.
 kubemedic demo [--setup DIR]               try it on the bundled broken cluster
 kubemedic serve [--transport stdio|http]   MCP server (HTTP binds 127.0.0.1 by default)
 kubemedic ingest                           Falcosidekick webhook receiver (needs KUBEMEDIC_INGEST_TOKEN)
+kubemedic report --client NAME [--pdf]     client-facing health & security report (HTML/PDF)
 kubemedic triage [ns] [--security]         JSON report
 kubemedic diagnose <ns> <name>
 kubemedic ask "<question>" [--model M]   agent loop with a local/OpenAI-compatible model
@@ -263,6 +264,20 @@ kubemedic plans | show <id> | approve <id> | reject <id>
 kubemedic commit <id>                      human-only commit (interactive terminal required)
 kubemedic capture --out DIR [-n ns]        snapshot a cluster into a fixture (env values etc. redacted)
 ```
+
+## Reports
+
+`kubemedic report` turns the read-only analysis into a client-facing document: a letter-grade summary, top risks in
+plain words, security incidents, root causes, platform issues and capacity — each finding with its evidence and fix.
+
+```bash
+kubemedic report --client "ACME GmbH" --by "Your Name" --contact you@example.com --out acme.html --pdf
+```
+
+It writes one self-contained HTML file (no external assets or network) laid out for A4, and a PDF when a converter
+(`wkhtmltopdf` or Chromium) is installed — otherwise open the HTML in a browser and *Print → Save as PDF*. Config and
+env values are never included; only resource names appear. See [docs/sample-report.pdf](docs/sample-report.pdf) for an
+example generated from the demo cluster.
 
 ## Status and limitations
 

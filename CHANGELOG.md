@@ -1,8 +1,8 @@
 # Changelog
 
 ## 0.2.0 (unreleased)
-Renamed from kubepilot to **kubemedic** (the old name collided with several similar projects).
 Every layer around the apps, data systems and the full fix lifecycle.
+- **Client reports**: `kubemedic report` renders the read-only analysis as a branded, print-ready HTML/PDF document (letter grade, top risks, security incidents, root causes, platform issues, capacity — each with evidence and fix). Config/env values are never included. Sample at `docs/sample-report.pdf`.
 - Edge: ingress-nginx (IngressNightmare versions → upgrade PR, retirement, snippet annotations, ModSecurity DetectionOnly → blocking PR, CRS, per-Ingress WAF bypass, outage impact) and Kong (exposed Admin API → ClusterIP PR, plain admin listener, missing KongPlugins, per-pod rate limits).
 - Log pipeline: Fluent Bit (node coverage → toleration PR, Retry_Limit/Mem_Buf_Limit → config PR, TLS, inline credentials, undeliverable destination), Fluentd/Vector coverage. Config parsed from ConfigMaps, never returned.
 - Routing (Ingress → missing/unready backends, linked to the broken workload) and cert-manager certificates (expired, expiring, renewal failing).
