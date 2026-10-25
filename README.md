@@ -108,24 +108,25 @@ contents are parsed in memory and **never returned** (they often embed passwords
 
 ## Try it in 1 minute (no cluster needed)
 
-Requires [uv](https://docs.astral.sh/uv/) and git.
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/007jesser/kubemedic && cd kubemedic
-uv run kubemedic demo                       # triage a bundled, deliberately broken cluster
-uv run kubemedic demo-diagnose shop checkout
+uvx kubemedic demo                          # triage a bundled, deliberately broken cluster
+uvx kubemedic demo-diagnose shop checkout
 ```
+
+Or `pip install kubemedic`, or from source: `git clone https://github.com/007jesser/kubemedic && cd kubemedic && uv run kubemedic demo`.
 
 ### Let an AI fix it
 
 ```bash
-uv run kubemedic demo --setup ./kubemedic-demo
+uvx kubemedic demo --setup ./kubemedic-demo
 ```
 
 This creates a demo GitOps repo and prints a ready-to-paste config. For Claude Code:
 
 ```bash
-claude mcp add --scope user kubemedic-demo -e KUBEMEDIC_SOURCE=fixture ... -- uv --directory $PWD run kubemedic serve
+claude mcp add --scope user kubemedic-demo -e KUBEMEDIC_SOURCE=fixture ... -- uvx kubemedic serve
 ```
 
 (Use the exact command `demo --setup` prints. `--scope user` makes it available from any folder.)
@@ -147,7 +148,7 @@ fixes but never commit them; you run `kubemedic commit <plan-id>` yourself. → 
 ### On your real cluster
 
 ```bash
-uv run kubemedic serve        # uses your current kube-context (or KUBEMEDIC_KUBE_CONTEXT)
+uvx kubemedic serve           # uses your current kube-context (or KUBEMEDIC_KUBE_CONTEXT)
 ```
 
 Set `KUBEMEDIC_GITOPS_REPO` to a local clone of your GitOps repo to enable fixes. Prefer a **read-only identity**
@@ -168,6 +169,10 @@ AI:   The problem is in a dependency, not in reports.
       - Reports hasn't changed; no rollout caused this. Restarting or editing reports won't help.
       After OpenSearch starts it will probably crash again: its heap (512Mi) equals its memory limit.
 ```
+
+Run again as the read-only ServiceAccount from `deploy/rbac.yaml` (`make lab-readonly`): it can list pods, read
+logs and Ingresses, but `kubectl auth can-i` says **no** to Secrets, exec, create, patch and delete — and kubemedic
+reported the same root causes with no privilege warning, in 0.39 s.
 
 The first real run also exposed four bugs the synthetic demo hid; they are fixed and kept as regression tests
 from the real capture. Full results: [docs/benchmarks/k3s-lab-2026-10.md](docs/benchmarks/k3s-lab-2026-10.md).
@@ -272,7 +277,7 @@ kubemedic is **alpha**. Known limits:
 - The Falco alert store is local SQLite (single replica).
 
 ## Roadmap
-Cilium Hubble drops → least-privilege NetworkPolicies · Gatekeeper constraints · Prometheus queries for peak usage · Flux status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
+Gatekeeper constraints · Prometheus queries for peak usage · Flux status in `verify_fix` · automatic revert-PR on regression · ephemeral verification in vcluster/kind before the PR · Cilium Hubble flow analysis → least-privilege NetworkPolicies from real traffic · Kyverno policy reuse · OpenCost rightsizing · multi-cluster view · eval harness comparing local and frontier models.
 
 ## Contributing & security
 Issues and PRs welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately, per [SECURITY.md](SECURITY.md).
