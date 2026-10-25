@@ -813,9 +813,16 @@ class KubePilot:
                     "blocked": p.blocked,
                     "created_at": p.created_at.isoformat(),
                     "branch": p.branch,
+                    **(
+                        {"merge": merge_state(store.repo, p)["state"], "reverts": p.reverts}
+                        if p.status == "committed"
+                        else {}
+                    ),
                 }
                 for p in store.all_plans()[:MAX_ITEMS]
-            ]
+            ],
+            "note": "Only plans in this kubepilot state directory exist; branch names remembered from an earlier "
+            "conversation or a reset lab may be gone. merge: merged | not-merged (local refs).",
         }
 
     def change_history(self, limit: int = 20) -> dict[str, Any]:

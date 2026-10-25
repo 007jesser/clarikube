@@ -623,3 +623,13 @@ def test_node_pool_memory_fix_edits_the_pool(tmp_path: Path, gitops_repo: Path) 
     d = p["files"][0]["diff"]
     assert "-      memory: 2Gi" in d and "+      memory: 3Gi" in d
     assert d.index("+      memory: 3Gi") > d.index("kind: KafkaNodePool") if "kind: KafkaNodePool" in d else True
+
+
+def test_list_plans_reports_merge_state(kp: KubePilot, gitops_repo: Path) -> None:
+    p = kp.plan_remediation("data", "queue", ["add-pdb"])
+    kp.commit_plan(p["id"], p["approval_token"])
+    row = next(r for r in kp.list_plans()["plans"] if r["id"] == p["id"])
+    assert row["merge"] == "not-merged"
+    git(gitops_repo, "merge", "-q", "--ff-only", str(row["branch"]))
+    row = next(r for r in kp.list_plans()["plans"] if r["id"] == p["id"])
+    assert row["merge"] == "merged"
