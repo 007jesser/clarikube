@@ -1,5 +1,7 @@
 # kubemedic
 
+<!-- mcp-name: io.github.007jesser/kubemedic -->
+
 [![CI](https://github.com/007jesser/kubemedic/actions/workflows/ci.yml/badge.svg)](https://github.com/007jesser/kubemedic/actions/workflows/ci.yml)
 ![status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)
