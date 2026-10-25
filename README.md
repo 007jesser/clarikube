@@ -153,19 +153,22 @@ Set `KUBEPILOT_GITOPS_REPO` to a local clone of your GitOps repo to enable fixes
 
 ## Tested on a real cluster
 
-The whole loop was validated on a single-node **k3s** lab (Ubuntu VM) with Falco (modern eBPF) and the Trivy Operator,
-driven by Claude Code: diagnosis → rollout correlation → Falco attack detection → plan → human approval → branch →
-merge → workload healthy. The lab is reproducible:
+On a k3s lab with 5 broken apps and a misconfigured data tier, Claude + kubepilot found **all 5 root causes in
+33 s with 10 tool calls**, using **~9.8k tokens** of context — the raw kubectl equivalent is ~67k. One answer:
 
-```bash
-make lab-k3s                       # Ubuntu box/VM: k3s, Falco, Trivy Operator, broken workloads
-make lab-ingest                    # separate terminal: receive Falco alerts
-make lab-verify PHASE=baseline     # automated PASS/WARN/FAIL checks
-make lab-break  && make lab-verify PHASE=broken
-make lab-attack && make lab-verify PHASE=attacked
+```
+You:  Why is shop/reports crashing?
+
+AI:   The problem is in a dependency, not in reports.
+      - reports' log says ECONNREFUSED to search.data:9200: it can't reach OpenSearch, exits with code 1,
+        and Kubernetes keeps restarting it.
+      - OpenSearch data/search has no ready pod: search-0 is still pulling its image.
+      - Reports hasn't changed; no rollout caused this. Restarting or editing reports won't help.
+      After OpenSearch starts it will probably crash again: its heap (512Mi) equals its memory limit.
 ```
 
-Runbook, expected results and troubleshooting: [docs/TESTING.md](docs/TESTING.md).
+The first real run also exposed four bugs the synthetic demo hid; they are fixed and kept as regression tests
+from the real capture. Full results: [docs/benchmarks/k3s-lab-2026-10.md](docs/benchmarks/k3s-lab-2026-10.md).
 
 ## How it works
 
