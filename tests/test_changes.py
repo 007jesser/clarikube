@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from kubepilot import policy, remediation
-from kubepilot.changes import PlanStore
-from kubepilot.models import RemediationHint, WorkloadRef
-from kubepilot.remediation import FileChange, RemediationError, RemediationResult
-from kubepilot.service import KubePilot
+from kubemedic import policy, remediation
+from kubemedic.changes import PlanStore
+from kubemedic.models import RemediationHint, WorkloadRef
+from kubemedic.remediation import FileChange, RemediationError, RemediationResult
+from kubemedic.service import Kubemedic
 from tests.conftest import git, make_settings
 
 # ---------------------------------------------------------------- policy guard
@@ -92,7 +92,7 @@ def test_netpol_added_and_registered_in_kustomization(gitops_repo: Path, snap) -
         gitops_repo, snap, WorkloadRef(kind="Deployment", namespace="shop", name="payment-api"), [hint]
     )
     paths = {c.path for c in res.changes}
-    assert paths == {"apps/shop/kubepilot-payment-api-isolate.yaml", "apps/shop/kustomization.yaml"}
+    assert paths == {"apps/shop/kubemedic-payment-api-isolate.yaml", "apps/shop/kustomization.yaml"}
     np = next(c for c in res.changes if c.path.endswith("isolate.yaml"))
     assert np.before is None and "policyTypes:\n    - Ingress\n    - Egress" in np.after
     assert "app: payment-api" in np.after
@@ -122,7 +122,7 @@ def test_ambiguous_manifest(gitops_repo: Path, snap) -> None:  # type: ignore[no
 
 
 def test_helm_templates_are_skipped(gitops_repo: Path) -> None:
-    from kubepilot.gitops import manifests
+    from kubemedic.gitops import manifests
 
     (gitops_repo / "tpl.yaml").write_text("kind: Deployment\nmetadata:\n  name: {{ .Values.name }}\n")
     assert all(d.path.name != "tpl.yaml" for d in manifests.scan(gitops_repo))
@@ -131,13 +131,13 @@ def test_helm_templates_are_skipped(gitops_repo: Path) -> None:
 # ---------------------------------------------------------------- plan pipeline
 
 
-def test_full_flow_commits_on_branch_without_touching_checkout(kp: KubePilot, gitops_repo: Path) -> None:
+def test_full_flow_commits_on_branch_without_touching_checkout(kp: Kubemedic, gitops_repo: Path) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     assert not plan["blocked"]
     assert plan["applied"] == ["checkout: limits.memory 256Mi → 512Mi"]
     assert "approval_token" in plan and "token_sha" not in plan
     res = kp.commit_plan(plan["id"], plan["approval_token"])
-    assert res["status"] == "committed" and res["branch"].startswith("kubepilot/checkout-")
+    assert res["status"] == "committed" and res["branch"].startswith("kubemedic/checkout-")
     # user's checkout untouched
     assert git(gitops_repo, "rev-parse", "--abbrev-ref", "HEAD") == "main"
     assert git(gitops_repo, "status", "--porcelain") == ""
@@ -154,20 +154,20 @@ def test_full_flow_commits_on_branch_without_touching_checkout(kp: KubePilot, gi
 
 
 def test_dry_run_writes_nothing(tmp_path: Path, gitops_repo: Path, demo_source) -> None:  # type: ignore[no-untyped-def]
-    kp = KubePilot(demo_source, make_settings(tmp_path, gitops_repo, dry_run=True))
+    kp = Kubemedic(demo_source, make_settings(tmp_path, gitops_repo, dry_run=True))
     plan = kp.plan_remediation("shop", "checkout")
     res = kp.commit_plan(plan["id"], plan["approval_token"])
     assert res["status"].startswith("dry-run")
-    assert git(gitops_repo, "branch", "--list", "kubepilot/*") == ""
+    assert git(gitops_repo, "branch", "--list", "kubemedic/*") == ""
 
 
-def test_bad_token_rejected(kp: KubePilot) -> None:
+def test_bad_token_rejected(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     with pytest.raises(PermissionError, match="invalid approval token"):
         kp.commit_plan(plan["id"], "guess")
 
 
-def test_expired_plan(kp: KubePilot) -> None:
+def test_expired_plan(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     store = kp.plans
     assert store is not None
@@ -177,7 +177,7 @@ def test_expired_plan(kp: KubePilot) -> None:
         store.commit(plan["id"], plan["approval_token"], now=datetime.now(UTC) + timedelta(hours=2))
 
 
-def test_stale_head(kp: KubePilot, gitops_repo: Path) -> None:
+def test_stale_head(kp: Kubemedic, gitops_repo: Path) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     (gitops_repo / "x.txt").write_text("x")
     git(gitops_repo, "add", "x.txt")
@@ -186,7 +186,7 @@ def test_stale_head(kp: KubePilot, gitops_repo: Path) -> None:
         kp.commit_plan(plan["id"], plan["approval_token"])
 
 
-def test_stale_file(kp: KubePilot, gitops_repo: Path) -> None:
+def test_stale_file(kp: Kubemedic, gitops_repo: Path) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     f = gitops_repo / "apps/shop/checkout.yaml"
     f.write_text(f.read_text() + "\n# edited\n")
@@ -195,9 +195,9 @@ def test_stale_file(kp: KubePilot, gitops_repo: Path) -> None:
 
 
 def test_cli_approval_mode(tmp_path: Path, gitops_repo: Path, demo_source) -> None:  # type: ignore[no-untyped-def]
-    kp = KubePilot(demo_source, make_settings(tmp_path, gitops_repo, approval_mode="cli"))
+    kp = Kubemedic(demo_source, make_settings(tmp_path, gitops_repo, approval_mode="cli"))
     plan = kp.plan_remediation("shop", "frontend")
-    with pytest.raises(PermissionError, match="kubepilot approve"):
+    with pytest.raises(PermissionError, match="kubemedic approve"):
         kp.commit_plan(plan["id"], plan["approval_token"])
     assert kp.plans is not None
     kp.plans.approve_cli(plan["id"])
@@ -241,29 +241,29 @@ def test_invalid_plan_id(tmp_path: Path, gitops_repo: Path) -> None:
         store.get("../../etc/passwd")
 
 
-def test_missing_secret_plan_is_manual_only(kp: KubePilot) -> None:
+def test_missing_secret_plan_is_manual_only(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "api")
     assert plan["blocked"] and plan["files"] == []
     assert any("api-db-credentials" in m for m in plan["manual"])
 
 
-def test_explicit_kinds_and_unknown_kind(kp: KubePilot) -> None:
+def test_explicit_kinds_and_unknown_kind(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "checkout", ["rollback-template"])
     assert any("image" in a for a in plan["applied"])
     with pytest.raises(ValueError, match="not applicable"):
         kp.plan_remediation("shop", "checkout", ["isolate-workload"])
 
 
-def test_security_plan_for_compromised_workload(kp: KubePilot) -> None:
+def test_security_plan_for_compromised_workload(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "payment-api")
     paths = {f["path"] for f in plan["files"]}
     assert "apps/shop/payment-api.yaml" in paths
-    assert "apps/shop/kubepilot-payment-api-ingress.yaml" in paths
+    assert "apps/shop/kubemedic-payment-api-ingress.yaml" in paths
     assert any("Rebuild the image" in m for m in plan["manual"])
     assert not plan["blocked"]
 
 
-def test_audit_log(kp: KubePilot) -> None:
+def test_audit_log(kp: Kubemedic) -> None:
     plan = kp.plan_remediation("shop", "checkout")
     kp.commit_plan(plan["id"], plan["approval_token"])
     events = [e["event"] for e in kp.change_history()["events"]]

@@ -776,7 +776,7 @@ wheels = [
 ]
 
 [[package]]
-name = "kubepilot"
+name = "kubemedic"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

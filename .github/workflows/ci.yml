@@ -22,9 +22,9 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest
       - name: Demo fixture is up to date with its generator
-        run: uv run python scripts/gen_ops_fixture.py | diff - src/kubepilot/demo/cluster/ops.yaml
+        run: uv run python scripts/gen_ops_fixture.py | diff - src/kubemedic/demo/cluster/ops.yaml
       - name: Build and smoke-test the wheel like a PyPI user
         run: |
           uv build
           cd "$(mktemp -d)"
-          uvx --from "$GITHUB_WORKSPACE"/dist/*.whl kubepilot demo
+          uvx --from "$GITHUB_WORKSPACE"/dist/*.whl kubemedic demo

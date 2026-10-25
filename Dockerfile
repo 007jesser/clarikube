@@ -8,9 +8,9 @@ RUN uv sync --frozen --no-dev --no-editable
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10001 --create-home kubepilot
+    && useradd --uid 10001 --create-home kubemedic
 COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
 USER 10001
-ENTRYPOINT ["kubepilot"]
+ENTRYPOINT ["kubemedic"]
 CMD ["serve", "--transport", "http", "--host", "0.0.0.0"]

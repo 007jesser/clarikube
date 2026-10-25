@@ -1,13 +1,13 @@
-"""Checks that kubepilot finds what the lab deliberately broke. Prints PASS / WARN / FAIL per check.
+"""Checks that kubemedic finds what the lab deliberately broke. Prints PASS / WARN / FAIL per check.
 
     uv run python lab/verify.py --phase baseline   # right after install
     uv run python lab/verify.py --phase broken     # after lab/break.sh
     uv run python lab/verify.py --phase attacked   # after lab/attack.sh
-    uv run python lab/verify.py --phase fixed      # after committing + applying kubepilot's fixes
+    uv run python lab/verify.py --phase fixed      # after committing + applying kubemedic's fixes
     uv run python lab/verify.py --phase data       # after lab/data.sh (optional data tier)
 
 WARN = not wrong, just not ready yet (e.g. Trivy still scanning, CronJob not run yet).
-Uses the same settings as `kubepilot serve` (KUBEPILOT_* env vars).
+Uses the same settings as `kubemedic serve` (KUBEMEDIC_* env vars).
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from kubepilot.config import Settings
-from kubepilot.service import KubePilot, build_from_settings
+from kubemedic.config import Settings
+from kubemedic.service import Kubemedic, build_from_settings
 
 GREEN, YELLOW, RED, RESET = "\033[32m", "\033[33m", "\033[31m", "\033[0m"
 
@@ -46,7 +46,7 @@ class Report:
         return 1 if fails else 0
 
 
-def findings(kp: KubePilot, name: str) -> list[dict[str, Any]]:
+def findings(kp: Kubemedic, name: str) -> list[dict[str, Any]]:
     try:
         return list(kp.diagnose_workload("shop", name)["findings"])
     except Exception as e:
@@ -57,14 +57,14 @@ def has(fs: list[dict[str, Any]], text: str) -> dict[str, Any] | None:
     return next((f for f in fs if text.lower() in (f["title"] + " " + f["explanation"]).lower()), None)
 
 
-def incident(kp: KubePilot, ns: str, name: str) -> dict[str, Any] | None:
+def incident(kp: Kubemedic, ns: str, name: str) -> dict[str, Any] | None:
     for i in kp.security_triage(ns, min_score=0)["incidents"]:
         if i["workload"].endswith(f"/{ns}/{name}"):
             return dict(i)
     return None
 
 
-def check_common(kp: KubePilot, r: Report) -> None:
+def check_common(kp: Kubemedic, r: Report) -> None:
     health = kp.cluster_health()
     r.ok(health["source"] == "kube", "connected to a live cluster", f"source={health['source']}", warn_only=True)
     for w in health["warnings"]:
@@ -102,13 +102,13 @@ def check_common(kp: KubePilot, r: Report) -> None:
         )
 
 
-def check_baseline(kp: KubePilot, r: Report) -> None:
+def check_baseline(kp: Kubemedic, r: Report) -> None:
     for name in ("checkout", "frontend"):
         fs = [f for f in findings(kp, name) if f.get("severity") in ("high", "critical", "medium")]
         r.ok(not fs, f"{name}: healthy at baseline", "; ".join(f["title"] for f in fs))
 
 
-def check_broken(kp: KubePilot, r: Report) -> None:
+def check_broken(kp: Kubemedic, r: Report) -> None:
     fs = findings(kp, "checkout")
     f = has(fs, "OOMKilled")
     r.ok(f is not None, "checkout: OOMKilled detected", "wait for at least one restart" if not f else "")
@@ -127,7 +127,7 @@ def check_broken(kp: KubePilot, r: Report) -> None:
         r.ok(any(h["kind"] == "set-image" for h in f["remediations"]), "frontend: revert to previous image proposed")
 
 
-def check_attacked(kp: KubePilot, r: Report, settings: Settings) -> None:
+def check_attacked(kp: Kubemedic, r: Report, settings: Settings) -> None:
     if settings.alerts_db is None or not Path(settings.alerts_db).exists():
         r.add("FAIL", "Falco alerts DB present", f"{settings.alerts_db} missing — is `make lab-ingest` running?")
         return
@@ -155,7 +155,7 @@ def check_attacked(kp: KubePilot, r: Report, settings: Settings) -> None:
         )
 
 
-def check_fixed(kp: KubePilot, r: Report) -> None:
+def check_fixed(kp: Kubemedic, r: Report) -> None:
     for name, text in (("checkout", "OOMKilled"), ("frontend", "Image pull")):
         r.ok(
             has(findings(kp, name), text) is None,
@@ -164,7 +164,7 @@ def check_fixed(kp: KubePilot, r: Report) -> None:
         )
 
 
-def check_data(kp: KubePilot, r: Report) -> None:
+def check_data(kp: Kubemedic, r: Report) -> None:
     comps = {c["name"]: c for c in kp.list_components("data")["components"]}
     for name in ("cache", "queue", "search"):
         r.ok(
@@ -217,7 +217,7 @@ def main() -> int:
     }[args.phase]()
     if args.json:
         print(json.dumps(kp.cluster_health(), indent=2, ensure_ascii=False))
-    print(f"\nkubepilot lab verification — phase: {args.phase}\n")
+    print(f"\nkubemedic lab verification — phase: {args.phase}\n")
     return r.print()
 
 

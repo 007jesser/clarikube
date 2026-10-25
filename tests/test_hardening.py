@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-from kubepilot import cli
-from kubepilot.redact import REDACTED, redact_objects
-from kubepilot.source.alerts import MAX_BODY_BYTES, AlertStore, make_ingest_app
+from kubemedic import cli
+from kubemedic.redact import REDACTED, redact_objects
+from kubemedic.source.alerts import MAX_BODY_BYTES, AlertStore, make_ingest_app
 from tests.conftest import git, make_settings
 
 # ---------------------------------------------------------------- capture redaction
@@ -79,9 +79,9 @@ def test_ingest_rejects_oversize_streamed_body() -> None:
 
 
 def test_ingest_cli_refuses_without_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("KUBEPILOT_INGEST_TOKEN", raising=False)
-    monkeypatch.delenv("KUBEPILOT_INGEST_ALLOW_UNAUTHENTICATED", raising=False)
-    monkeypatch.setenv("KUBEPILOT_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("KUBEMEDIC_INGEST_TOKEN", raising=False)
+    monkeypatch.delenv("KUBEMEDIC_INGEST_ALLOW_UNAUTHENTICATED", raising=False)
+    monkeypatch.setenv("KUBEMEDIC_STATE_DIR", str(tmp_path))
     assert cli.main(["ingest"]) == 2
 
 
@@ -89,7 +89,7 @@ def test_ingest_cli_refuses_without_token(monkeypatch: pytest.MonkeyPatch, tmp_p
 
 
 def test_repo_hooks_are_never_executed(tmp_path: Path, gitops_repo: Path, demo_source) -> None:  # type: ignore[no-untyped-def]
-    from kubepilot.service import KubePilot
+    from kubemedic.service import Kubemedic
 
     marker = tmp_path / "hook-ran"
     hooks = gitops_repo / ".git" / "hooks"
@@ -97,19 +97,19 @@ def test_repo_hooks_are_never_executed(tmp_path: Path, gitops_repo: Path, demo_s
         h = hooks / name
         h.write_text(f"#!/bin/sh\necho {name} >> {marker}\n")
         h.chmod(0o755)
-    kp = KubePilot(demo_source, make_settings(tmp_path, gitops_repo))
+    kp = Kubemedic(demo_source, make_settings(tmp_path, gitops_repo))
     plan = kp.plan_remediation("shop", "checkout")
     res = kp.commit_plan(plan["id"], plan["approval_token"])
     assert res["status"] == "committed"
     assert not marker.exists(), marker.read_text() if marker.exists() else ""
-    assert git(gitops_repo, "branch", "--list", "kubepilot/*")
+    assert git(gitops_repo, "branch", "--list", "kubemedic/*")
 
 
 # ---------------------------------------------------------------- packaged demo (PyPI users have no repo)
 
 
 def test_demo_data_ships_inside_the_package() -> None:
-    from kubepilot import demo
+    from kubemedic import demo
 
     assert (demo.CLUSTER / "meta.yaml").is_file()
     assert (demo.GITOPS_REPO / "apps" / "shop" / "checkout.yaml").is_file()
@@ -126,7 +126,7 @@ def test_demo_setup_creates_repo_and_config(tmp_path: Path, capsys: pytest.Captu
     assert cli.main(["demo", "--setup", str(tmp_path / "d")]) == 0
     assert git(tmp_path / "d" / "repo", "log", "--oneline")
     out = capsys.readouterr().out
-    assert "claude mcp add --scope user kubepilot-demo" in out
+    assert "claude mcp add --scope user kubemedic-demo" in out
     assert "uv --directory" in out  # source checkout -> runnable before the PyPI release
     assert cli.main(["demo", "--setup", str(tmp_path / "d")]) == 2  # refuses to overwrite
 
@@ -135,10 +135,10 @@ def test_demo_setup_creates_repo_and_config(tmp_path: Path, capsys: pytest.Captu
 
 
 def test_platform_namespaces_hidden_from_security_views(tmp_path: Path, gitops_repo: Path, demo_source) -> None:  # type: ignore[no-untyped-def]
-    from kubepilot.service import KubePilot
+    from kubemedic.service import Kubemedic
 
     s = make_settings(tmp_path, gitops_repo, system_namespaces=frozenset({"batch"}))
-    kp = KubePilot(demo_source, s)
+    kp = Kubemedic(demo_source, s)
     tri = kp.security_triage()
     assert all("/batch/" not in i["workload"] for i in tri["incidents"])
     assert tri["platform_incidents_hidden"] == 1
@@ -148,16 +148,16 @@ def test_platform_namespaces_hidden_from_security_views(tmp_path: Path, gitops_r
 
 
 def test_system_namespaces_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    from kubepilot.config import Settings
+    from kubemedic.config import Settings
 
-    monkeypatch.setenv("KUBEPILOT_SYSTEM_NAMESPACES", "a, b ,")
+    monkeypatch.setenv("KUBEMEDIC_SYSTEM_NAMESPACES", "a, b ,")
     assert Settings.from_env().system_namespaces == frozenset({"a", "b"})
-    monkeypatch.delenv("KUBEPILOT_SYSTEM_NAMESPACES")
+    monkeypatch.delenv("KUBEMEDIC_SYSTEM_NAMESPACES")
     assert "falco" in Settings.from_env().system_namespaces
 
 
 def test_capture_keeps_bare_addresses_but_redacts_everything_else() -> None:
-    from kubepilot.redact import REDACTED, redact_objects
+    from kubemedic.redact import REDACTED, redact_objects
 
     pod = {
         "spec": {

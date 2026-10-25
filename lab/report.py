@@ -1,4 +1,4 @@
-"""Launch report: run kubepilot against the live lab and measure what it finds, how fast, and how much context it
+"""Launch report: run kubemedic against the live lab and measure what it finds, how fast, and how much context it
 saves compared with the raw kubectl output an agent would otherwise read.
 
     make lab-report            # writes lab-report-<date>/{report.md, report.json, fixture/}
@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from kubepilot.config import Settings
-from kubepilot.service import KubePilot, build_from_settings
+from kubemedic.config import Settings
+from kubemedic.service import Kubemedic, build_from_settings
 
 CHARS_PER_TOKEN = 4  # rough average for English/JSON with modern tokenizers
 
@@ -66,7 +66,7 @@ def raw_baseline(failing: list[tuple[str, str, str]]) -> dict[str, int]:
 
 def main() -> int:
     settings = Settings.from_env()
-    kp: KubePilot = build_from_settings(settings)
+    kp: Kubemedic = build_from_settings(settings)
     out_dir = Path(f"lab-report-{datetime.now(UTC):%Y%m%d-%H%M}")
     out_dir.mkdir(exist_ok=True)
     rep: dict[str, Any] = {
@@ -147,18 +147,18 @@ def main() -> int:
     kp_total += sum(d["tokens"] for d in diagnoses)
     raw = raw_baseline(failing_pods)
     rep["context_comparison"] = {
-        "kubepilot_tokens": kp_total,
+        "kubemedic_tokens": kp_total,
         "raw_kubectl_tokens": sum(raw.values()),
         "raw_breakdown": raw,
         "ratio": round(sum(raw.values()) / kp_total, 1) if kp_total else None,
-        "note": "Approximate (chars/4). kubepilot output is pre-correlated findings; raw is what a kubectl-only "
+        "note": "Approximate (chars/4). kubemedic output is pre-correlated findings; raw is what a kubectl-only "
         "agent would read to reach the same conclusions (and it still has to do the correlation itself).",
     }
 
     (out_dir / "report.json").write_text(json.dumps(rep, indent=2, ensure_ascii=False))
     (out_dir / "report.md").write_text(render(rep))
     cap = subprocess.run(
-        [sys.executable, "-m", "kubepilot.cli", "capture", "--out", str(out_dir / "fixture")],
+        [sys.executable, "-m", "kubemedic.cli", "capture", "--out", str(out_dir / "fixture")],
         capture_output=True,
         text=True,
     )
@@ -167,7 +167,7 @@ def main() -> int:
         f"\nSaved to {out_dir}/ (report.md, report.json, fixture/). capture: "
         f"{'ok' if cap.returncode == 0 else cap.stderr.strip()[:200]}"
     )
-    print("Review the folder, then zip it and send it back: zip -r kubepilot-lab-report.zip " + str(out_dir))
+    print("Review the folder, then zip it and send it back: zip -r kubemedic-lab-report.zip " + str(out_dir))
     return 0
 
 
@@ -176,7 +176,7 @@ def render(rep: dict[str, Any]) -> str:
     nodes = c.get("nodes") or {}
     cc = rep.get("context_comparison", {})
     lines = [
-        f"# kubepilot lab report ({rep['generated_at'][:16]})",
+        f"# kubemedic lab report ({rep['generated_at'][:16]})",
         "",
         f"Cluster: {nodes.get('total')} node(s), not ready: {nodes.get('not_ready')} · "
         f"{c.get('workloads')} workloads · {c.get('pods')} pods",
@@ -191,7 +191,7 @@ def render(rep: dict[str, Any]) -> str:
         lines.append(f"| diagnose {d['workload']} | {d['seconds']} | {d['tokens']} | {d['error'] or ''} |")
     lines += [
         "",
-        f"**Context: kubepilot {cc.get('kubepilot_tokens')} tokens vs raw kubectl {cc.get('raw_kubectl_tokens')} "
+        f"**Context: kubemedic {cc.get('kubemedic_tokens')} tokens vs raw kubectl {cc.get('raw_kubectl_tokens')} "
         f"tokens (~{cc.get('ratio')}x less), already correlated.**",
         "",
         "## Components detected",

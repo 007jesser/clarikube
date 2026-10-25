@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Single-machine lab: k3s (one node) + Falco + Trivy Operator + kubepilot test workloads.
+# Single-machine lab: k3s (one node) + Falco + Trivy Operator + kubemedic test workloads.
 # Target: Ubuntu 22.04/24.04 (VM or bare metal), 4+ vCPU, 8 GB RAM recommended (4 GB works with LOW_MEM=1).
 # Run from the repo root as a normal user with sudo:   ./lab/k3s-install.sh
 set -euo pipefail
@@ -9,7 +9,7 @@ warn() { printf '\033[1;33m!! %s\033[0m\n' "$*"; }
 
 # ------------------------------------------------------------ preflight
 say "Preflight checks"
-[[ -f lab/gitops/kustomization.yaml ]] || { echo "run from the kubepilot repo root"; exit 1; }
+[[ -f lab/gitops/kustomization.yaml ]] || { echo "run from the kubemedic repo root"; exit 1; }
 MEM_GB=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)
 KERNEL=$(uname -r)
 echo "RAM: ${MEM_GB} GB | kernel: ${KERNEL} | CPUs: $(nproc)"

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from kubepilot import demo
-from kubepilot.config import Settings
-from kubepilot.service import KubePilot
-from kubepilot.source.base import Snapshot
-from kubepilot.source.fixture import FixtureSource
+from kubemedic import demo
+from kubemedic.config import Settings
+from kubemedic.service import Kubemedic
+from kubemedic.source.base import Snapshot
+from kubemedic.source.fixture import FixtureSource
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,5 +67,5 @@ def make_settings(tmp_path: Path, repo: Path | None, **over: object) -> Settings
 
 
 @pytest.fixture
-def kp(tmp_path: Path, gitops_repo: Path, demo_source: FixtureSource) -> KubePilot:
-    return KubePilot(demo_source, make_settings(tmp_path, gitops_repo))
+def kp(tmp_path: Path, gitops_repo: Path, demo_source: FixtureSource) -> Kubemedic:
+    return Kubemedic(demo_source, make_settings(tmp_path, gitops_repo))

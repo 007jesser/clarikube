@@ -1,24 +1,24 @@
 # In-cluster mode: Falco alert receiver + MCP server (Streamable HTTP) sharing one SQLite volume.
 # Apply after rbac.yaml. Create the ingest token first:
-#   kubectl -n kubepilot create secret generic kubepilot-ingest --from-literal=token=$(openssl rand -hex 24)
+#   kubectl -n kubemedic create secret generic kubemedic-ingest --from-literal=token=$(openssl rand -hex 24)
 # Connect your MCP client through a port-forward (the MCP port is not exposed outside the cluster):
-#   kubectl -n kubepilot port-forward svc/kubepilot 8765:8765   ->  http://127.0.0.1:8765/mcp
+#   kubectl -n kubemedic port-forward svc/kubemedic 8765:8765   ->  http://127.0.0.1:8765/mcp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubepilot
-  namespace: kubepilot
-  labels: {app.kubernetes.io/name: kubepilot}
+  name: kubemedic
+  namespace: kubemedic
+  labels: {app.kubernetes.io/name: kubemedic}
 spec:
   replicas: 1          # SQLite alert store: keep a single replica
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app.kubernetes.io/name: kubepilot}
+    matchLabels: {app.kubernetes.io/name: kubemedic}
   template:
     metadata:
-      labels: {app.kubernetes.io/name: kubepilot}
+      labels: {app.kubernetes.io/name: kubemedic}
     spec:
-      serviceAccountName: kubepilot
+      serviceAccountName: kubemedic
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -27,12 +27,12 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: ingest
-          image: ghcr.io/OWNER/kubepilot:0.2.0   # build with the repo Dockerfile
+          image: ghcr.io/007jesser/kubemedic:0.2.0   # build with the repo Dockerfile
           args: [ingest, --host, 0.0.0.0, --port, "2801"]
           env:
-            - {name: KUBEPILOT_ALERTS_DB, value: /data/alerts.db}
-            - name: KUBEPILOT_INGEST_TOKEN
-              valueFrom: {secretKeyRef: {name: kubepilot-ingest, key: token}}
+            - {name: KUBEMEDIC_ALERTS_DB, value: /data/alerts.db}
+            - name: KUBEMEDIC_INGEST_TOKEN
+              valueFrom: {secretKeyRef: {name: kubemedic-ingest, key: token}}
           ports: [{name: ingest, containerPort: 2801}]
           readinessProbe: {httpGet: {path: /healthz, port: ingest}}
           resources:
@@ -44,13 +44,13 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts: [{name: data, mountPath: /data}]
         - name: mcp
-          image: ghcr.io/OWNER/kubepilot:0.2.0
+          image: ghcr.io/007jesser/kubemedic:0.2.0
           args: [serve, --transport, http, --host, 0.0.0.0, --port, "8765"]
           env:
-            - {name: KUBEPILOT_SOURCE, value: kube}
-            - {name: KUBEPILOT_ALERTS_DB, value: /data/alerts.db}
-            - {name: KUBEPILOT_ALLOWLIST, value: /config/allowlist.yaml}
-            - {name: KUBEPILOT_STATE_DIR, value: /data/state}
+            - {name: KUBEMEDIC_SOURCE, value: kube}
+            - {name: KUBEMEDIC_ALERTS_DB, value: /data/alerts.db}
+            - {name: KUBEMEDIC_ALLOWLIST, value: /config/allowlist.yaml}
+            - {name: KUBEMEDIC_STATE_DIR, value: /data/state}
           ports: [{name: mcp, containerPort: 8765}]
           resources:
             requests: {cpu: 50m, memory: 128Mi}
@@ -66,15 +66,15 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          configMap: {name: kubepilot-config, optional: true}
+          configMap: {name: kubemedic-config, optional: true}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: kubepilot
-  namespace: kubepilot
+  name: kubemedic
+  namespace: kubemedic
 spec:
-  selector: {app.kubernetes.io/name: kubepilot}
+  selector: {app.kubernetes.io/name: kubemedic}
   ports:
     - {name: ingest, port: 2801, targetPort: ingest}
     - {name: mcp, port: 8765, targetPort: mcp}
@@ -83,11 +83,11 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kubepilot
-  namespace: kubepilot
+  name: kubemedic
+  namespace: kubemedic
 spec:
   podSelector:
-    matchLabels: {app.kubernetes.io/name: kubepilot}
+    matchLabels: {app.kubernetes.io/name: kubemedic}
   policyTypes: [Ingress]
   ingress:
     - from:

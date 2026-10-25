@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from kubepilot.engine import components as C
-from kubepilot.engine import diagnose
-from kubepilot.source.base import Snapshot
-from kubepilot.source.fixture import FixtureSource
+from kubemedic.engine import components as C
+from kubemedic.engine import diagnose
+from kubemedic.source.base import Snapshot
+from kubemedic.source.fixture import FixtureSource
 
 FIXTURE = Path(__file__).parent / "fixtures" / "k3s-lab-2026-10"
 

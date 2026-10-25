@@ -15,7 +15,7 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -q
       - name: Tag matches package version
-        run: test "v$(uv run python -c 'import importlib.metadata as m; print(m.version("kubepilot"))')" = "$GITHUB_REF_NAME"
+        run: test "v$(uv run python -c 'import importlib.metadata as m; print(m.version("kubemedic"))')" = "$GITHUB_REF_NAME"
       - run: uv build
       - uses: actions/upload-artifact@v4
         with: {name: dist, path: dist/}
@@ -46,5 +46,5 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/kubepilot:${{ github.ref_name }}
-            ghcr.io/${{ github.repository_owner }}/kubepilot:latest
+            ghcr.io/${{ github.repository_owner }}/kubemedic:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/kubemedic:latest

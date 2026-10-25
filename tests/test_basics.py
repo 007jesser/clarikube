@@ -6,10 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from kubepilot import normalize, quantity
-from kubepilot.engine import selectors
-from kubepilot.models import LabelSelector, NetworkPolicyInfo, Pod, Severity, WorkloadRef
-from kubepilot.sanitize import INJECTION_MARK, clean, k8s_name
+from kubemedic import normalize, quantity
+from kubemedic.engine import selectors
+from kubemedic.models import LabelSelector, NetworkPolicyInfo, Pod, Severity, WorkloadRef
+from kubemedic.sanitize import INJECTION_MARK, clean, k8s_name
 
 # ---------------------------------------------------------------- quantity
 

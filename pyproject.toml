@@ -1,5 +1,5 @@
 [project]
-name = "kubepilot"
+name = "kubemedic"
 version = "0.2.0"
 description = "Model-agnostic MCP server for safe Kubernetes diagnosis, security triage and GitOps-based remediation"
 readme = "README.md"
@@ -29,12 +29,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OWNER/kubepilot"
-Issues = "https://github.com/OWNER/kubepilot/issues"
-Changelog = "https://github.com/OWNER/kubepilot/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/007jesser/kubemedic"
+Issues = "https://github.com/007jesser/kubemedic/issues"
+Changelog = "https://github.com/007jesser/kubemedic/blob/main/CHANGELOG.md"
 
 [project.scripts]
-kubepilot = "kubepilot.cli:main"
+kubemedic = "kubemedic.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]
@@ -67,7 +67,7 @@ ignore = ["S101", "S603", "S607", "RUF005"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["kubepilot"]
+packages = ["kubemedic"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
@@ -75,5 +75,5 @@ module = ["kubernetes.*", "ruamel.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["kubepilot.source.kube"]
+module = ["kubemedic.source.kube"]
 disallow_untyped_calls = false  # the kubernetes client ships without type hints

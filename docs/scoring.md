@@ -1,7 +1,7 @@
 # Security scoring
 
 Every point is attributable to a concrete signal, shown in the incident's `signals` list.
-Source of truth: `SCORING` in `src/kubepilot/engine/security.py`.
+Source of truth: `SCORING` in `src/kubemedic/engine/security.py`.
 
 | Signal | Points |
 |---|---|
@@ -35,4 +35,4 @@ RBAC only counts when the ServiceAccount token is automounted.
 | ≥ 25 | medium |
 | ≥ 10 | low |
 
-Allowlisted alerts (`KUBEPILOT_ALLOWLIST`) are excluded from scoring and counted in `suppressed_alerts`.
+Allowlisted alerts (`KUBEMEDIC_ALLOWLIST`) are excluded from scoring and counted in `suppressed_alerts`.

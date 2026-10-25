@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from kubepilot.engine import components as C
-from kubepilot.engine import fluentbit, layers
-from kubepilot.service import KubePilot
-from kubepilot.source.base import Snapshot
+from kubemedic.engine import components as C
+from kubemedic.engine import fluentbit, layers
+from kubemedic.service import Kubemedic
+from kubemedic.source.base import Snapshot
 
 
-def titles(kp: KubePilot, ns: str, name: str) -> list[str]:
+def titles(kp: Kubemedic, ns: str, name: str) -> list[str]:
     return [f["title"] for f in kp.diagnose_component(ns, name)["findings"]]
 
 
@@ -42,7 +42,7 @@ def test_platform_components_detected_with_layers(snap: Snapshot) -> None:
     assert fb.layer == "logging" and fb.specs[0].kind == "DaemonSet" and len(fb.pods) == 2
 
 
-def test_ingress_nginx_checks(kp: KubePilot) -> None:
+def test_ingress_nginx_checks(kp: Kubemedic) -> None:
     t = titles(kp, "ingress-nginx", "ingress-nginx")
     assert any("vulnerable to IngressNightmare (CVE-2025-1974)" in x for x in t)
     assert any("snippet annotations are allowed" in x for x in t)
@@ -61,7 +61,7 @@ def test_ingressnightmare_version_boundaries() -> None:
     assert not any(v < (1, 11, 5) or v == (1, 12, 0) for v in fixed)
 
 
-def test_kong_checks(kp: KubePilot) -> None:
+def test_kong_checks(kp: Kubemedic) -> None:
     t = titles(kp, "kong", "kong-gateway")
     assert any("Admin API / Kong Manager is reachable from outside" in x for x in t)
     assert any("listens on all interfaces over plain HTTP" in x for x in t)
@@ -70,7 +70,7 @@ def test_kong_checks(kp: KubePilot) -> None:
     assert not any("missing KongPlugin rate-limit" in x for x in t)
 
 
-def test_fluent_bit_checks_and_pipeline(kp: KubePilot) -> None:
+def test_fluent_bit_checks_and_pipeline(kp: Kubemedic) -> None:
     d = kp.diagnose_component("logging", "fluent-bit")
     t = [f["title"] for f in d["findings"]]
     assert any("no log collection on 1 tainted node" in x for x in t)
@@ -83,7 +83,7 @@ def test_fluent_bit_checks_and_pipeline(kp: KubePilot) -> None:
     assert "DEMO-not-a-real-password" not in json.dumps(d)  # config values are never returned
 
 
-def test_routing_and_certificates(kp: KubePilot) -> None:
+def test_routing_and_certificates(kp: Kubemedic) -> None:
     rows = kp.cluster_health()["platform_issues"]
     got = {r["title"] for r in rows}
     assert "Ingress shop/storefront: shop.example.com/ has no ready backend (frontend)" in got
@@ -94,7 +94,7 @@ def test_routing_and_certificates(kp: KubePilot) -> None:
     assert any("rateLimited" in e["detail"] for e in cert["evidence"])
 
 
-def test_workload_view_shows_user_impact(kp: KubePilot) -> None:
+def test_workload_view_shows_user_impact(kp: Kubemedic) -> None:
     titles_ = [f["title"] for f in kp.diagnose_workload("shop", "frontend")["findings"]]
     assert any(t.startswith("Users affected: Ingress shop/storefront") for t in titles_)
 
@@ -126,7 +126,7 @@ def test_fluentbit_set_option_is_idempotent() -> None:
 # ---------------------------------------------------------------- fixes
 
 
-def test_plan_ingress_nginx_upgrade_and_waf(kp: KubePilot) -> None:
+def test_plan_ingress_nginx_upgrade_and_waf(kp: Kubemedic) -> None:
     p = kp.plan_remediation("ingress-nginx", "ingress-nginx", ["set-image"])
     assert "+          image: registry.k8s.io/ingress-nginx/controller:v1.11.5" in p["files"][0]["diff"]
     w = kp.plan_remediation("ingress-nginx", "ingress-nginx", ["set-modsecurity-blocking"])
@@ -134,13 +134,13 @@ def test_plan_ingress_nginx_upgrade_and_waf(kp: KubePilot) -> None:
     assert any("false positives" in n for n in w["notes"])
 
 
-def test_plan_kong_admin_internal(kp: KubePilot) -> None:
+def test_plan_kong_admin_internal(kp: Kubemedic) -> None:
     p = kp.plan_remediation("kong", "kong-gateway", ["make-service-internal"])
     d = p["files"][0]["diff"]
     assert "+  type: ClusterIP" in d and "-      nodePort: 32001" in d
 
 
-def test_plan_fluent_bit_merges_edits_into_one_file(kp: KubePilot, gitops_repo: Path) -> None:
+def test_plan_fluent_bit_merges_edits_into_one_file(kp: Kubemedic, gitops_repo: Path) -> None:
     p = kp.plan_remediation("logging", "fluent-bit")
     assert [f["path"] for f in p["files"]] == ["platform/logging/fluent-bit.yaml"]
     d = p["files"][0]["diff"]
@@ -149,6 +149,6 @@ def test_plan_fluent_bit_merges_edits_into_one_file(kp: KubePilot, gitops_repo: 
     kp.commit_plan(p["id"], p["approval_token"])  # one coherent commit, no overwritten edits
 
 
-def test_select_one_option_by_exact_key(kp: KubePilot) -> None:
+def test_select_one_option_by_exact_key(kp: Kubemedic) -> None:
     p = kp.plan_remediation("logging", "fluent-bit", ["set-fluentbit-option:Mem_Buf_Limit"])
     assert "Mem_Buf_Limit" in p["files"][0]["diff"] and "Retry_Limit" not in p["files"][0]["diff"]

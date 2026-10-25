@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from kubepilot.engine import layers, ops, usage
-from kubepilot.service import KubePilot
-from kubepilot.source.alerts import AlertStore, make_ingest_app
-from kubepilot.source.base import Snapshot
+from kubemedic.engine import layers, ops, usage
+from kubemedic.service import Kubemedic
+from kubemedic.source.alerts import AlertStore, make_ingest_app
+from kubemedic.source.base import Snapshot
 
 
 def titles(findings: list) -> set[str]:  # type: ignore[type-arg]
@@ -40,7 +40,7 @@ def test_gitops_controllers(snap: Snapshot) -> None:
     assert "Flux HelmRelease monitoring/grafana is suspended" in by
 
 
-def test_secret_sync_is_named_as_root_cause(kp: KubePilot) -> None:
+def test_secret_sync_is_named_as_root_cause(kp: Kubemedic) -> None:
     fs = kp.diagnose_workload("shop", "api")["findings"]
     assert fs[0]["title"] == "Likely root cause: ExternalSecret shop/api-db-credentials is failing to sync"
     assert any("permission denied" in e["detail"] for e in fs[0]["evidence"])
@@ -48,7 +48,7 @@ def test_secret_sync_is_named_as_root_cause(kp: KubePilot) -> None:
     assert "SealedSecret shop/payment-keys cannot be decrypted" in t
 
 
-def test_autoscaling(kp: KubePilot) -> None:
+def test_autoscaling(kp: Kubemedic) -> None:
     t = titles(ops.autoscaling_findings(kp._snap(None)))
     assert "HPA checkout cannot read its metrics and is not scaling" in t
     assert "HPA frontend is pinned at maxReplicas (1)" in t
@@ -59,7 +59,7 @@ def test_autoscaling(kp: KubePilot) -> None:
     assert "Cluster Autoscaler will not add a node for worker" in worker
 
 
-def test_storage_explains_pending_kafka_broker(kp: KubePilot) -> None:
+def test_storage_explains_pending_kafka_broker(kp: Kubemedic) -> None:
     snap = kp._snap(None)
     t = titles(ops.storage_findings(snap))
     assert "PVC data/data-events-broker-2 uses missing StorageClass fast-ssd" in t
@@ -69,7 +69,7 @@ def test_storage_explains_pending_kafka_broker(kp: KubePilot) -> None:
     assert "fast-ssd does not exist" in vol["explanation"]
 
 
-def test_policy_denial_and_reports(kp: KubePilot) -> None:
+def test_policy_denial_and_reports(kp: Kubemedic) -> None:
     rec = kp.diagnose_workload("shop", "recommendations")  # a Deployment with zero pods is still diagnosable
     assert rec["findings"][0]["title"] == "Pods of recommendations are blocked by admission policy"
     assert "require-run-as-nonroot" in rec["findings"][0]["evidence"][0]["detail"]
@@ -98,7 +98,7 @@ def test_nodes_lb_mesh(snap: Snapshot) -> None:
     assert "ratings-v1: istio-proxy sidecar is not ready" in t
 
 
-def test_cluster_services(kp: KubePilot) -> None:
+def test_cluster_services(kp: Kubemedic) -> None:
     rows = {r["component"]: r for r in kp.list_components()["components"]}
     assert rows["Cilium kube-system/cilium"]["layer"] == "network"
     cil = kp.diagnose_component("kube-system", "cilium")["findings"]
@@ -133,7 +133,7 @@ def test_catalog_images(image: str, kind: str) -> None:
     assert layers.classify_platform_image(image) == kind
 
 
-def test_usage_oom_risk_and_capacity(kp: KubePilot) -> None:
+def test_usage_oom_risk_and_capacity(kp: Kubemedic) -> None:
     snap = kp._snap(None)
     fs = {f.title: f for f in usage.usage_findings(snap)}
     risk = fs["'proxy' is at 95% of its memory limit (OOM risk)"]
@@ -145,7 +145,7 @@ def test_usage_oom_risk_and_capacity(kp: KubePilot) -> None:
     assert cap["memory"]["used"] and "metrics-server" in cap["note"]
 
 
-def test_cluster_health_groups_platform_issues(kp: KubePilot) -> None:
+def test_cluster_health_groups_platform_issues(kp: Kubemedic) -> None:
     areas = {r["area"] for r in kp.cluster_health()["platform_issues"]}
     assert {
         "routing",
@@ -194,7 +194,7 @@ def test_alertmanager_webhook_ingest(tmp_path: Path) -> None:
     assert store.firing(since) == []  # resolution replaces the firing state
 
 
-def test_no_secret_material_in_outputs(kp: KubePilot) -> None:
+def test_no_secret_material_in_outputs(kp: Kubemedic) -> None:
     blob = json.dumps([kp.cluster_health(), kp.find_problems(min_severity="low")])
     for needle in ("AgB4xKZ", "DEMO-not-a-real-password", "sk_live"):
         assert needle not in blob

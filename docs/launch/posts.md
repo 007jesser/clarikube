@@ -1,20 +1,20 @@
 # Launch posts (drafts)
 
-Replace NAME / links once the project name and repo are final. Numbers come from
+Links: https://github.com/007jesser/kubemedic . Numbers come from
 docs/benchmarks/k3s-lab-2026-10.md; don't round them up.
 
 ---
 
 ## Show HN
 
-**Title:** Show HN: NAME – AI that finds the real root cause in Kubernetes and fixes it as a Git PR
+**Title:** Show HN: kubemedic – AI that finds the real root cause in Kubernetes and fixes it as a Git PR
 
 **Body:**
 
 I'm a DevOps engineer. Every "AI for Kubernetes" tool I tried either dumps kubectl output into a model and
 hopes, or gives the agent cluster-admin and lets it run commands. Neither is something I'd let near production.
 
-NAME is an MCP server (works with Claude, Cursor, any MCP client, or a local model via Ollama) that does the
+kubemedic is an MCP server (works with Claude, Cursor, any MCP client, or a local model via Ollama) that does the
 analysis itself, in deterministic, tested code, and hands the model short, correlated findings:
 
 - It follows failures across layers: "orders is crashing" → "Kafka has 2/3 brokers and min.insync = RF" →
@@ -28,7 +28,7 @@ On my k3s lab (5 broken apps + a misconfigured data tier) Claude found all 5 roo
 tokens — the raw kubectl equivalent is ~67k tokens. The first run on a real cluster also found 4 bugs in my
 own code that the synthetic demo missed; they're now regression tests (details in the repo).
 
-Try it without a cluster: `uvx NAME demo`.
+Try it without a cluster: `uvx kubemedic demo`.
 
 Alpha, Apache-2.0. I'd love to hear what breaks on your clusters, and what you'd never let an AI do.
 
@@ -48,7 +48,7 @@ Alpha, Apache-2.0. I'd love to hear what breaks on your clusters, and what you'd
 Most AI tools for Kubernetes either guess from raw logs or get admin access to "fix" things. I wanted
 neither.
 
-So I built NAME: an open-source AI ops layer that
+So I built kubemedic: an open-source AI ops layer that
 → finds the real root cause across every layer (apps, Kafka/Redis/Postgres, ingress, logging, GitOps, secrets),
 → proposes the fix as a reviewed Git pull request,
 → and never writes to the cluster.

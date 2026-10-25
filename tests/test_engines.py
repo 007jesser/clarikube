@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from kubepilot.engine import diagnose, rbac, security
-from kubepilot.engine.allowlist import Allowlist
-from kubepilot.models import BindingInfo, PolicyRule, RoleInfo, Severity, Subject, WorkloadRef
+from kubemedic.engine import diagnose, rbac, security
+from kubemedic.engine.allowlist import Allowlist
+from kubemedic.models import BindingInfo, PolicyRule, RoleInfo, Severity, Subject, WorkloadRef
 from tests.conftest import ALLOWLIST
 
 

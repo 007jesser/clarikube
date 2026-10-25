@@ -9,7 +9,7 @@ import pytest
 from kubernetes import client
 from kubernetes.client.exceptions import ApiException
 
-from kubepilot.source.kube import KubeSource
+from kubemedic.source.kube import KubeSource
 
 
 def _bare() -> KubeSource:

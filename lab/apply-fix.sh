@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Plays the role of Argo CD / Flux after a human merges a kubepilot PR:
-# merges the kubepilot branch into main in the lab GitOps repo and applies it.
-#   ./lab/apply-fix.sh kubepilot/checkout-<planid>
+# Plays the role of Argo CD / Flux after a human merges a kubemedic PR:
+# merges the kubemedic branch into main in the lab GitOps repo and applies it.
+#   ./lab/apply-fix.sh kubemedic/checkout-<planid>
 set -euo pipefail
 export KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config}
-BRANCH=${1:?usage: apply-fix.sh <kubepilot branch>   (see: git -C ~/kubepilot-lab-gitops branch)}
-LAB_REPO=${LAB_REPO:-$HOME/kubepilot-lab-gitops}
+BRANCH=${1:?usage: apply-fix.sh <kubemedic branch>   (see: git -C ~/kubemedic-lab-gitops branch)}
+LAB_REPO=${LAB_REPO:-$HOME/kubemedic-lab-gitops}
 git -C "$LAB_REPO" log --oneline -1 "$BRANCH"
 git -C "$LAB_REPO" diff --stat main "$BRANCH"
 # Read from the terminal, not stdin, so pasted follow-up commands aren't consumed as the answer.

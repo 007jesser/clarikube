@@ -10,9 +10,9 @@ import pytest
 from mcp.client.client import Client
 from starlette.testclient import TestClient
 
-from kubepilot.server import create_server
-from kubepilot.service import KubePilot
-from kubepilot.source.alerts import AlertStore, make_ingest_app
+from kubemedic.server import create_server
+from kubemedic.service import Kubemedic
+from kubemedic.source.alerts import AlertStore, make_ingest_app
 
 pytestmark = pytest.mark.anyio
 
@@ -30,7 +30,7 @@ def payload(result: Any) -> dict[str, Any]:
     return json.loads(text)
 
 
-async def test_tools_listed_with_annotations(kp: KubePilot) -> None:
+async def test_tools_listed_with_annotations(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
         assert {
@@ -57,7 +57,7 @@ async def test_tools_listed_with_annotations(kp: KubePilot) -> None:
         assert {"triage_cluster", "fix_workload", "incident_response"} <= prompts
 
 
-async def test_cluster_health_via_mcp(kp: KubePilot) -> None:
+async def test_cluster_health_via_mcp(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         data = payload(await client.call_tool("cluster_health", {}))
         assert data["source"] == "fixture"
@@ -65,15 +65,15 @@ async def test_cluster_health_via_mcp(kp: KubePilot) -> None:
         assert data["security_incidents"][0]["workload"] == "Deployment/shop/payment-api"
 
 
-async def test_injection_flagged_through_mcp(kp: KubePilot) -> None:
+async def test_injection_flagged_through_mcp(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         data = payload(await client.call_tool("investigate_security", {"namespace": "shop", "name": "payment-api"}))
         details = [e["detail"] for e in data["incident"]["evidence"]]
         flagged = [d for d in details if "kubectl delete" in d]
-        assert flagged and all(d.startswith("[kubepilot: possible prompt-injection") for d in flagged)
+        assert flagged and all(d.startswith("[kubemedic: possible prompt-injection") for d in flagged)
 
 
-async def test_plan_and_commit_via_mcp(kp: KubePilot) -> None:
+async def test_plan_and_commit_via_mcp(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         plan = payload(await client.call_tool("plan_remediation", {"namespace": "shop", "name": "frontend"}))
         assert "frontend:1.8.2" in plan["files"][0]["diff"]
@@ -83,7 +83,7 @@ async def test_plan_and_commit_via_mcp(kp: KubePilot) -> None:
         assert res["status"] == "committed"
 
 
-async def test_errors_are_clean_tool_errors(kp: KubePilot) -> None:
+async def test_errors_are_clean_tool_errors(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         r = await client.call_tool("diagnose_workload", {"namespace": "shop", "name": "ghost"})
         assert r.is_error
@@ -130,7 +130,7 @@ def test_alert_retention() -> None:
     assert store.prune(datetime.now(UTC)) == 1
 
 
-async def test_component_tools_via_mcp(kp: KubePilot) -> None:
+async def test_component_tools_via_mcp(kp: Kubemedic) -> None:
     async with Client(create_server(kp)) as client:
         comps = payload(await client.call_tool("list_components", {"namespace": "data"}))
         assert comps["count"] == 5
