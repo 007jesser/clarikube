@@ -339,9 +339,13 @@ def cmd_report(args: argparse.Namespace) -> int:
     if args.pdf:
         pdf = out.with_suffix(".pdf")
         tool = to_pdf(out, pdf)
-        msg += f" and {pdf} (via {tool})" if tool else (
-            f"\nNo PDF converter found (install wkhtmltopdf or Chromium). "
-            f"Open {out} in a browser and Print → Save as PDF."
+        msg += (
+            f" and {pdf} (via {tool})"
+            if tool
+            else (
+                f"\nNo PDF converter found (install wkhtmltopdf or Chromium). "
+                f"Open {out} in a browser and Print → Save as PDF."
+            )
         )
     sc = rep["sev_counts"]
     print(msg)

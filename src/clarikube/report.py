@@ -173,7 +173,9 @@ def _finding_html(f: dict[str, Any]) -> str:
     if ev:
         parts.append('<div class="ev">')
         for e in ev[:4]:
-            parts.append(f'<div><span class="k">{_e(e.get("source", ""))}</span> &middot; {_e(e.get("detail", ""))}</div>')
+            parts.append(
+                f'<div><span class="k">{_e(e.get("source", ""))}</span> &middot; {_e(e.get("detail", ""))}</div>'
+            )
         parts.append("</div>")
     rems = [r for r in (f.get("remediations") or []) if r.get("summary")]
     if rems:
@@ -190,18 +192,28 @@ def render_html(rep: dict[str, Any]) -> str:
     sc = rep["sev_counts"]
     nodes = rep["cluster"]["nodes"] or {}
 
-    counts_html = "".join(
-        f'<span class="pill {k[:4]}">{v} {k}</span>'
-        for k, v in (("crit", sc.get("critical", 0)), ("high", sc.get("high", 0)),
-                     ("med", sc.get("medium", 0)), ("low", sc.get("low", 0)))
-        if v
-    ) or '<span class="pill low">no issues above low severity</span>'
+    counts_html = (
+        "".join(
+            f'<span class="pill {k[:4]}">{v} {k}</span>'
+            for k, v in (
+                ("crit", sc.get("critical", 0)),
+                ("high", sc.get("high", 0)),
+                ("med", sc.get("medium", 0)),
+                ("low", sc.get("low", 0)),
+            )
+            if v
+        )
+        or '<span class="pill low">no issues above low severity</span>'
+    )
 
-    top = "".join(
-        f'<tr><td><span class="badge b-{r["severity"]}">{r["severity"]}</span></td>'
-        f'<td>{_e(r["title"])}</td><td class="mono">{_e(r["where"])}</td></tr>'
-        for r in rep["top_risks"]
-    ) or '<tr><td colspan="3" class="note">No critical or high-severity reliability risks found.</td></tr>'
+    top = (
+        "".join(
+            f'<tr><td><span class="badge b-{r["severity"]}">{r["severity"]}</span></td>'
+            f'<td>{_e(r["title"])}</td><td class="mono">{_e(r["where"])}</td></tr>'
+            for r in rep["top_risks"]
+        )
+        or '<tr><td colspan="3" class="note">No critical or high-severity reliability risks found.</td></tr>'
+    )
 
     # findings grouped by category then layer-ish: reliability first, then config, then security handled separately
     rel = [f for f in rep["findings"] if f["category"] == "reliability"]
@@ -218,22 +230,25 @@ def render_html(rep: dict[str, Any]) -> str:
         inc_html.append(f'<div class="finding {sev}"><div class="head">')
         inc_html.append(f'<span class="ttl">{_e(i["workload"])}</span>')
         inc_html.append(f'<span class="badge b-{sev}">score {i["score"]} &middot; {sev}</span></div>')
-        inc_html.append(f'<p>{_e(i["summary"])}</p>')
+        inc_html.append(f"<p>{_e(i['summary'])}</p>")
         sigs = i.get("signals") or []
         if sigs:
             inc_html.append('<div class="ev">' + "".join(f"<div>&bull; {_e(s)}</div>" for s in sigs[:6]) + "</div>")
         inc_html.append("</div>")
-    incidents_block = "".join(inc_html) or '<p class="note">No security incidents scored above the reporting threshold.</p>'
+    incidents_block = (
+        "".join(inc_html) or '<p class="note">No security incidents scored above the reporting threshold.</p>'
+    )
 
     # platform issues table
     plat = "".join(
         f'<tr><td><span class="badge b-{p["severity"]}">{p["severity"]}</span></td>'
-        f'<td>{_e(p.get("area", ""))}</td><td>{_e(p["title"])}</td></tr>'
+        f"<td>{_e(p.get('area', ''))}</td><td>{_e(p['title'])}</td></tr>"
         for p in rep["platform_issues"][:30]
     )
     plat_block = (
-        f'<table><tr><th>Severity</th><th>Area</th><th>Issue</th></tr>{plat}</table>'
-        if plat else '<p class="note">No platform-level issues found.</p>'
+        f"<table><tr><th>Severity</th><th>Area</th><th>Issue</th></tr>{plat}</table>"
+        if plat
+        else '<p class="note">No platform-level issues found.</p>'
     )
 
     # capacity
@@ -242,29 +257,34 @@ def render_html(rep: dict[str, Any]) -> str:
     if cap:
         cpu, mem = cap.get("cpu", {}), cap.get("memory", {})
         cap_block = (
-            f'<table><tr><th>Resource</th><th>Requested</th><th>In use</th><th>Idle (paid, unused)</th></tr>'
-            f'<tr><td>CPU</td><td>{cpu.get("requested_m","?")}m</td><td>{cpu.get("used_m","?")}m</td>'
-            f'<td>{cpu.get("idle_requested_m","?")}m</td></tr>'
-            f'<tr><td>Memory</td><td>{_e(mem.get("requested","?"))}</td><td>{_e(mem.get("used","?"))}</td>'
-            f'<td>{_e(mem.get("idle_requested","?"))}</td></tr></table>'
-            f'<p class="note">{_e(cap.get("note",""))}</p>'
+            f"<table><tr><th>Resource</th><th>Requested</th><th>In use</th><th>Idle (paid, unused)</th></tr>"
+            f"<tr><td>CPU</td><td>{cpu.get('requested_m', '?')}m</td><td>{cpu.get('used_m', '?')}m</td>"
+            f"<td>{cpu.get('idle_requested_m', '?')}m</td></tr>"
+            f"<tr><td>Memory</td><td>{_e(mem.get('requested', '?'))}</td><td>{_e(mem.get('used', '?'))}</td>"
+            f"<td>{_e(mem.get('idle_requested', '?'))}</td></tr></table>"
+            f'<p class="note">{_e(cap.get("note", ""))}</p>'
         )
 
     # components
     comp = "".join(
-        f'<tr><td><span class="badge b-{"critical" if c["status"]=="down" else ("high" if c["status"]=="at-risk" else "low")}">'
-        f'{_e(c["status"])}</span></td><td>{_e(c["component"])}</td><td>{_e(LAYER_TITLES.get(c["layer"],c["layer"]))}</td>'
-        f'<td>{c.get("issues",0)}</td><td>{_e(c.get("top_issue",""))}</td></tr>'
+        f'<tr><td><span class="badge b-{"critical" if c["status"] == "down" else ("high" if c["status"] == "at-risk" else "low")}">'
+        f"{_e(c['status'])}</span></td><td>{_e(c['component'])}</td><td>{_e(LAYER_TITLES.get(c['layer'], c['layer']))}</td>"
+        f"<td>{c.get('issues', 0)}</td><td>{_e(c.get('top_issue', ''))}</td></tr>"
         for c in rep["components"]
     )
     comp_block = (
-        f'<table><tr><th>Status</th><th>Component</th><th>Layer</th><th>Issues</th><th>Main problem</th></tr>{comp}</table>'
-        if comp else '<p class="note">No managed platform components detected.</p>'
+        f"<table><tr><th>Status</th><th>Component</th><th>Layer</th><th>Issues</th><th>Main problem</th></tr>{comp}</table>"
+        if comp
+        else '<p class="note">No managed platform components detected.</p>'
     )
 
     warn = ""
     if rep["cluster"]["warnings"]:
-        warn = '<p class="note"><b>Data-collection notes:</b> ' + "; ".join(_e(w) for w in rep["cluster"]["warnings"]) + "</p>"
+        warn = (
+            '<p class="note"><b>Data-collection notes:</b> '
+            + "; ".join(_e(w) for w in rep["cluster"]["warnings"])
+            + "</p>"
+        )
 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -281,14 +301,14 @@ def render_html(rep: dict[str, Any]) -> str:
     <div>Cluster</div><div>{_e(m.cluster)}</div>
     <div>Date</div><div>{_e(m.generated_at)}</div>
     <div>Prepared by</div><div>{_e(m.prepared_by)} &middot; {_e(m.contact)}</div>
-    <div>Scope</div><div>{_e(nodes.get("total","?"))} node(s), {_e(rep["cluster"]["workloads"])} workloads, {_e(rep["cluster"]["pods"])} pods</div>
+    <div>Scope</div><div>{_e(nodes.get("total", "?"))} node(s), {_e(rep["cluster"]["workloads"])} workloads, {_e(rep["cluster"]["pods"])} pods</div>
     <div>Method</div><div>Read-only inspection of Kubernetes state. No changes were made to the cluster.</div>
   </div>
 
   <div class="hero">
-    <div class="grade g-{rep['grade']}">{rep['grade']}</div>
+    <div class="grade g-{rep["grade"]}">{rep["grade"]}</div>
     <div>
-      <div style="font-weight:700;font-size:16px">{_e(rep['grade_note'])}</div>
+      <div style="font-weight:700;font-size:16px">{_e(rep["grade_note"])}</div>
       <div class="counts">{counts_html}</div>
     </div>
   </div>
@@ -305,7 +325,7 @@ def render_html(rep: dict[str, Any]) -> str:
   <p>Workloads are scored by combining runtime alerts, image vulnerabilities, excessive privileges and exposure,
   and missing network isolation. Higher score = more urgent.</p>
   {incidents_block}
-  <p class="note">{_e(rep['scoring_note'])}</p>
+  <p class="note">{_e(rep["scoring_note"])}</p>
 
   <h2>Reliability &amp; root causes</h2>
   <p>Failures are traced to their real cause across layers (an app failing because a data system or dependency it
@@ -334,7 +354,7 @@ def render_html(rep: dict[str, Any]) -> str:
 
   <footer>
     Generated by clarikube &mdash; Kubernetes health &amp; security audit. &copy; {datetime.now(UTC):%Y} {_e(m.prepared_by)}.
-    This report reflects the cluster state at the time of capture ({_e(rep['cluster'].get('as_of') or m.generated_at)}).
+    This report reflects the cluster state at the time of capture ({_e(rep["cluster"].get("as_of") or m.generated_at)}).
   </footer>
 </div></body></html>"""
 
@@ -344,15 +364,23 @@ def to_pdf(html_path: Path, pdf_path: Path) -> str | None:
     if shutil.which("wkhtmltopdf"):
         subprocess.run(
             ["wkhtmltopdf", "--enable-local-file-access", "-q", "-s", "A4", str(html_path), str(pdf_path)],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
         return "wkhtmltopdf"
     for browser in ("chromium", "chromium-browser", "google-chrome"):
         if shutil.which(browser):
             subprocess.run(
-                [browser, "--headless", "--no-sandbox", "--no-pdf-header-footer",
-                 f"--print-to-pdf={pdf_path}", f"file://{html_path.resolve()}"],
-                check=True, capture_output=True,
+                [
+                    browser,
+                    "--headless",
+                    "--no-sandbox",
+                    "--no-pdf-header-footer",
+                    f"--print-to-pdf={pdf_path}",
+                    f"file://{html_path.resolve()}",
+                ],
+                check=True,
+                capture_output=True,
             )
             return browser
     try:
