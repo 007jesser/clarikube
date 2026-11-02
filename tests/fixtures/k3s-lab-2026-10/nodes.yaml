@@ -3,13 +3,13 @@ items:
 - kind: Node
   metadata:
     annotations:
-      alpha.kubernetes.io/provided-node-ip: 192.168.141.134
+      alpha.kubernetes.io/provided-node-ip: 192.168.56.10
       flannel.alpha.coreos.com/backend-data: '{"VNI":1,"VtepMAC":"a2:76:db:1c:3b:d6"}'
       flannel.alpha.coreos.com/backend-type: vxlan
       flannel.alpha.coreos.com/kube-subnet-manager: 'true'
-      flannel.alpha.coreos.com/public-ip: 192.168.141.134
+      flannel.alpha.coreos.com/public-ip: 192.168.56.10
       k3s.io/hostname: ubuntu-VMware-Virtual-Platform
-      k3s.io/internal-ip: 192.168.141.134
+      k3s.io/internal-ip: 192.168.56.10
       k3s.io/node-args: '["server","--disable","traefik","--write-kubeconfig-mode","600"]'
       k3s.io/node-config-hash: 7DS2OUYA5PZCEFJY3N27ZSSZEIGFOL7PJPAD7CPEYJDYF2BYQDNA====
       k3s.io/node-env: '{}'
@@ -37,7 +37,7 @@ items:
     providerID: k3s://ubuntu-vmware-virtual-platform
   status:
     addresses:
-    - address: 192.168.141.134
+    - address: 192.168.56.10
       type: InternalIP
     - address: ubuntu-VMware-Virtual-Platform
       type: Hostname

@@ -5,7 +5,7 @@ description = "Model-agnostic MCP server for safe Kubernetes diagnosis, security
 readme = "README.md"
 license = "Apache-2.0"
 authors = [
-    { name = "Jesser Sallemi", email = "jesser.sallemi18@gmail.com" }
+    { name = "Jesser Sallemi" }
 ]
 requires-python = ">=3.12"
 keywords = ["kubernetes", "mcp", "gitops", "sre", "ai", "falco", "trivy", "kafka", "devops"]

@@ -137,9 +137,9 @@ items:
         name: kube-api-access-hllff
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Pending
     qosClass: Burstable
@@ -314,9 +314,9 @@ items:
         name: kube-api-access-jgbcp
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.121
@@ -475,9 +475,9 @@ items:
         name: kube-api-access-62vnl
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Pending
     qosClass: Burstable
@@ -662,9 +662,9 @@ items:
         name: kube-api-access-l2bcc
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.76
@@ -847,9 +847,9 @@ items:
         name: kube-api-access-h7n5p
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.80
@@ -1307,9 +1307,9 @@ items:
         name: kube-api-access-4xzg9
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     initContainerStatuses:
     - containerID: containerd://7cad5a3e9fbd6782d5423ff476c8c0c1801edc8d30ef94064e29b2c8b96e66bc
       image: docker.io/falcosecurity/falcoctl:0.14.2
@@ -1593,9 +1593,9 @@ items:
         name: kube-api-access-cfjkj
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.82
@@ -1758,9 +1758,9 @@ items:
         name: kube-api-access-7l64f
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.77
@@ -1952,9 +1952,9 @@ items:
         name: kube-api-access-bnq9v
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.81
@@ -2090,9 +2090,9 @@ items:
         name: kube-api-access-r26zx
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Pending
     podIP: 10.42.0.114
@@ -2262,9 +2262,9 @@ items:
         name: kube-api-access-7zl7z
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.116
@@ -2402,9 +2402,9 @@ items:
         name: kube-api-access-wslg9
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Pending
     podIP: 10.42.0.117
@@ -2550,9 +2550,9 @@ items:
         name: kube-api-access-lms8m
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.112
@@ -2697,9 +2697,9 @@ items:
         name: kube-api-access-6cntj
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.111
@@ -2872,9 +2872,9 @@ items:
         name: kube-api-access-9b9m9
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.118
@@ -3217,9 +3217,9 @@ items:
         name: tmp
       - mountPath: /tmp/scan
         name: scanresult
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.126
@@ -3476,9 +3476,9 @@ items:
         name: tmp
       - mountPath: /tmp/scan
         name: scanresult
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.125
@@ -3735,9 +3735,9 @@ items:
         name: tmp
       - mountPath: /tmp/scan
         name: scanresult
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.113
@@ -3930,9 +3930,9 @@ items:
         name: kube-api-access-c5txw
         readOnly: true
         recursiveReadOnly: Disabled
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.78
@@ -4114,9 +4114,9 @@ items:
         name: tmp-data
       - mountPath: /home/scanner/.cache
         name: data
-    hostIP: 192.168.141.134
+    hostIP: 192.168.56.10
     hostIPs:
-    - ip: 192.168.141.134
+    - ip: 192.168.56.10
     observedGeneration: 1
     phase: Running
     podIP: 10.42.0.86
